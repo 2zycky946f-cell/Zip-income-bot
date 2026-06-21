@@ -16,7 +16,7 @@ CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 await update.message.reply_text(
-“📊 ZipIncome Bot\n\n”
+"📊 ZipIncome Bot\n\n"
 “Upload a CSV or XLSX file containing a column named ZIP.\n\n”
 “Example:\n”
 “ZIP\n”
