@@ -225,64 +225,59 @@ async def image(update,context):
     )
 
     try:
-
         file = await update.message.photo[-1].get_file()
 
-        await file.download_to_drive(
-            "img.jpg"
-        )
+        await file.download_to_drive("img.jpg")
 
+
+        results = ocr.readtext("img.jpg")
 
         text = " ".join(
-            x[1]
-            for x in ocr.readtext("img.jpg")
+            item[1]
+            for item in results
         )
+
+        print("OCR TEXT:", text)
 
 
         zips = re.findall(
-            r"\b\d{5}\b",
+            r"\d{5}",
             text
         )
 
 
         if not zips:
-
             await update.message.reply_text(
-                "❌ No ZIP found"
+                "❌ No ZIP found\n\nOCR saw:\n" + text[:200]
             )
             return
 
 
         await update.message.reply_text(
-            f"✅ Found:\n{zips}\n\n🔍 Searching..."
+            f"✅ Found ZIP:\n{zips}\n\n🔍 Searching..."
         )
 
 
-        results=[]
-
+        output=[]
 
         for z in zips:
-            results.append(
+            output.append(
                 await lookup_zip(z)
             )
 
 
         await update.message.reply_text(
-            "\n\n".join(results)
+            "\n\n".join(output)
         )
 
 
     except Exception as e:
 
-        print(
-            "OCR ERROR:",
-            e
-        )
+        print("PHOTO ERROR:", e)
 
         await update.message.reply_text(
-            "❌ Image error"
+            "❌ Image failed"
         )
-
 
 
 # ---------- BUTTONS ----------
