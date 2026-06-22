@@ -312,7 +312,7 @@ or upload screenshot 📷
 
     elif q.data=="premium":
 
-    await q.edit_message_text(
+        await q.edit_message_text(
 f"""
 💎 Premium Plans
 
@@ -327,9 +327,10 @@ f"""
 {BTC}
 
 
-After payment contact admin for activation.
+After payment type:
+/paid
 """
-)
+        )
 
 
     elif q.data=="account":
@@ -358,6 +359,11 @@ Expires:
 {u[2] or "Never"}
 """
         )
+
+
+
+# ---------- PAYMENT ----------
+
 async def paid(update,context):
 
     await update.message.reply_text(
@@ -369,24 +375,36 @@ Admin will verify your Bitcoin payment and send your key.
     )
 
 
-# ---------- ADMIN ----------
-# ---------- ADMIN ----------
 
+# ---------- ADMIN ----------
 
 async def approve(update,context):
 
     if update.effective_user.id != ADMIN:
         return
 
+
+    if len(context.args) < 2:
+
+        await update.message.reply_text(
+            "Use: /approve USER_ID DAYS"
+        )
+
+        return
+
+
     user_id = int(context.args[0])
     plan = context.args[1]
 
+
     key = secrets.token_hex(8)
+
 
     cur.execute(
         "INSERT INTO keys VALUES(?,?,0)",
         (key,plan)
     )
+
 
     expire = (
         "LIFETIME"
@@ -399,6 +417,7 @@ async def approve(update,context):
         ).isoformat()
     )
 
+
     cur.execute(
         "UPDATE users SET plan='PREMIUM',expire=? WHERE id=?",
         (expire,user_id)
@@ -406,18 +425,20 @@ async def approve(update,context):
 
     db.commit()
 
+
     await context.bot.send_message(
         chat_id=user_id,
         text=f"""
 🔥 Payment Confirmed!
 
-🔑 Your key:
+🔑 Key:
 {key}
 
 Plan:
 {plan}
 """
     )
+
 
     await update.message.reply_text(
         "✅ Approved"
@@ -426,9 +447,15 @@ Plan:
 
 
 async def createkey(update,context):
-async def createkey(update,context):
 
     if update.effective_user.id != ADMIN:
+        return
+
+
+    if not context.args:
+        await update.message.reply_text(
+            "Use: /createkey DAYS"
+        )
         return
 
 
@@ -492,9 +519,11 @@ async def menu(app):
     await app.bot.set_my_commands(
         [
             BotCommand("start","Start"),
+            BotCommand("paid","Payment sent"),
             BotCommand("lookup","Lookup")
         ]
     )
+
 
 
 # ---------- RUN ----------
@@ -513,13 +542,23 @@ CommandHandler("createkey",createkey)
 app.add_handler(
 CommandHandler("givepremium",givepremium)
 )
-app.add_handler(CommandHandler("paid",paid))
+
+app.add_handler(
+CommandHandler("approve",approve)
+)
+
+app.add_handler(
+CommandHandler("paid",paid)
+)
+
+
 app.add_handler(
 MessageHandler(
 filters.TEXT & ~filters.COMMAND,
 text_zip
 )
 )
+
 
 app.add_handler(
 MessageHandler(
@@ -528,9 +567,11 @@ image
 )
 )
 
+
 app.add_handler(
 CallbackQueryHandler(buttons)
 )
+
 
 app.post_init = menu
 
