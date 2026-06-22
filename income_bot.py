@@ -38,32 +38,27 @@ def get_income(zip_code):
             f"&key={CENSUS_API_KEY}"
         )
 
-
         response = requests.get(
-    url,
-    timeout=30
-)
+            url,
+            timeout=60
+        )
 
-
-        print("CENSUS RESPONSE:")
-        print(response.text)
-
+        if response.status_code != 200:
+            print("CENSUS ERROR:")
+            print(response.text)
+            return "Not found"
 
         data = response.json()
 
-
         if len(data) > 1:
             return int(data[1][0])
-
 
     except Exception as e:
 
         print("INCOME ERROR:")
         print(e)
 
-
-    return "Not found"
-
+    return "Timeout"
 
 
 def make_message(zips):
