@@ -48,9 +48,22 @@ def get_income(zip_code):
 
 
 def read_zips(image_path):
-    text = pytesseract.image_to_string(
-        Image.open(image_path)
-    )
+
+    url = "https://api.ocr.space/parse/image"
+
+    with open(image_path, "rb") as image:
+        response = requests.post(
+            url,
+            files={"filename": image},
+            data={"language": "eng"}
+        )
+
+    data = response.json()
+
+    text = ""
+
+    for item in data.get("ParsedResults", []):
+        text += item.get("ParsedText", "")
 
     zips = re.findall(r"\b\d{5}\b", text)
 
