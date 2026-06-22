@@ -4,4 +4,5 @@ openpyxl
 requests
 pillow
 aiohttp
-pytesseract
+easyocr
+torch
