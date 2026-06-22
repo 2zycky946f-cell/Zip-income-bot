@@ -1,7 +1,6 @@
 import os
 import re
 import requests
-import pandas as pd
 
 from telegram import Update
 from telegram.ext import (
@@ -12,20 +11,24 @@ from telegram.ext import (
     filters
 )
 
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
         "ZipIncome Bot\n\n"
-        "Send ZIP codes as text, a picture, or upload CSV/XLSX."
+        "Send ZIP codes like:\n"
+        "93618 93722 90210"
     )
 
 
 def get_income(zip_code):
 
     try:
+
         zip_code = str(zip_code).strip().zfill(5)
 
         url = (
@@ -35,61 +38,80 @@ def get_income(zip_code):
             f"&key={CENSUS_API_KEY}"
         )
 
-        response = requests.get(url, timeout=15)
+
+        response = requests.get(
+            url,
+            timeout=15
+        )
+
 
         print("CENSUS RESPONSE:")
         print(response.text)
 
+
         data = response.json()
+
 
         if len(data) > 1:
             return int(data[1][0])
 
+
     except Exception as e:
+
         print("INCOME ERROR:")
         print(e)
+
 
     return "Not found"
 
 
 
-def make_excel(zips):
+def make_message(zips):
+
 
     results = []
 
+
     for z in zips:
+
+        income = get_income(z)
+
         results.append(
             {
-                "ZIP": z,
-                "Median_Household_Income": get_income(z)
+                "zip": z,
+                "income": income
             }
         )
 
 
-    df = pd.DataFrame(results)
-
-
-    # Sort highest income to lowest income
-    df["Median_Household_Income"] = pd.to_numeric(
-        df["Median_Household_Income"],
-        errors="coerce"
+    results.sort(
+        key=lambda x: x["income"]
+        if isinstance(x["income"], int)
+        else 0,
+        reverse=True
     )
 
 
-    df = df.sort_values(
-        by="Median_Household_Income",
-        ascending=False
-    )
+    message = "ZIP Income Results:\n\n"
 
 
-    path = "/tmp/zip_income_results.xlsx"
+    for item in results:
 
-    df.to_excel(
-        path,
-        index=False
-    )
+        if item["income"] == "Not found":
 
-    return path
+            message += (
+                f"{item['zip']}: Not found\n"
+            )
+
+        else:
+
+            message += (
+                f"{item['zip']}: "
+                f"${item['income']:,}\n"
+            )
+
+
+    return message
 
 
 
@@ -98,6 +120,7 @@ def read_zips(image_path):
     try:
 
         url = "https://api.ocr.space/parse/image"
+
 
         with open(image_path, "rb") as image:
 
@@ -115,14 +138,20 @@ def read_zips(image_path):
 
         data = response.json()
 
+
         text = ""
 
+
         for item in data.get("ParsedResults", []):
-            text += item.get("ParsedText", "") + "\n"
+
+            text += (
+                item.get("ParsedText", "")
+                + "\n"
+            )
 
 
         print("OCR TEXT:")
-        print(repr(text))
+        print(text)
 
 
         zips = re.findall(
@@ -143,9 +172,13 @@ def read_zips(image_path):
 
 
 
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     text = update.message.text
+
 
     zips = re.findall(
         r"\d{5}",
@@ -162,27 +195,28 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+
     zips = list(dict.fromkeys(zips))
 
 
     await update.message.reply_text(
-        "Processing..."
+        "Checking incomes..."
     )
 
 
-    output = make_excel(zips)
+    message = make_message(zips)
 
 
-    with open(output, "rb") as f:
-
-        await update.message.reply_document(
-            document=f,
-            filename="zip_income_results.xlsx"
-        )
+    await update.message.reply_text(
+        message
+    )
 
 
 
-async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def photo_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     await update.message.reply_text(
         "Reading image..."
@@ -190,6 +224,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     photo = update.message.photo[-1]
+
 
     file = await context.bot.get_file(
         photo.file_id
@@ -199,109 +234,39 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     image_path = "/tmp/photo.jpg"
 
 
-    await file.download_to_drive(image_path)
+    await file.download_to_drive(
+        image_path
+    )
 
 
-    zips = read_zips(image_path)
+    zips = read_zips(
+        image_path
+    )
 
 
     if not zips:
 
         await update.message.reply_text(
-            "No ZIP codes found."
+            "No ZIP codes found in image."
         )
 
         return
 
 
-    output = make_excel(zips)
-
-
-    with open(output, "rb") as f:
-
-        await update.message.reply_document(
-            document=f,
-            filename="zip_income_results.xlsx"
-        )
-
-
-
-async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    document = update.message.document
-
-    name = document.file_name.lower()
-
-
-    if not (
-        name.endswith(".csv")
-        or name.endswith(".xlsx")
-    ):
-
-        await update.message.reply_text(
-            "Upload CSV or XLSX only."
-        )
-
-        return
-
-
-
-    file = await context.bot.get_file(
-        document.file_id
+    message = make_message(
+        zips
     )
 
 
-    path = f"/tmp/{document.file_name}"
-
-
-    await file.download_to_drive(path)
-
-
-
-    if name.endswith(".csv"):
-
-        df = pd.read_csv(path)
-
-    else:
-
-        df = pd.read_excel(path)
-
-
-
-    if "ZIP" not in df.columns:
-
-        await update.message.reply_text(
-            "Your file needs a ZIP column."
-        )
-
-        return
-
-
-
-    zips = (
-        df["ZIP"]
-        .astype(str)
-        .str.extract(r"(\d{5})")[0]
-        .dropna()
-        .tolist()
+    await update.message.reply_text(
+        message
     )
 
 
 
-    output = make_excel(zips)
-
-
-
-    with open(output, "rb") as f:
-
-        await update.message.reply_document(
-            document=f,
-            filename="zip_income_results.xlsx"
-        )
-
-
-
-app = Application.builder().token(BOT_TOKEN).build()
+app = Application.builder().token(
+    BOT_TOKEN
+).build()
 
 
 
@@ -313,23 +278,12 @@ app.add_handler(
 )
 
 
-
 app.add_handler(
     MessageHandler(
         filters.PHOTO,
         photo_handler
     )
 )
-
-
-
-app.add_handler(
-    MessageHandler(
-        filters.Document.ALL,
-        file_handler
-    )
-)
-
 
 
 app.add_handler(
@@ -341,7 +295,7 @@ app.add_handler(
 
 
 
-print("Bot running")
+print("ZipIncome Bot running")
 
-app.run_polling()
+
 app.run_polling()
