@@ -115,84 +115,61 @@ def make_message(zips):
 
 
 
-def read_zips(image_path):
+def try:
 
-    try:
+    url = "https://api.ocr.space/parse/image"
 
-        url = "https://api.ocr.space/parse/image"
+    with open(image_path, "rb") as image:
 
-
-        with open(image_path, "rb") as image:
-
-            response = requests.post(
-                url,
-                files={"filename": image},
-                data={
-                    "language": "eng",
-                    "isOverlayRequired": False,
-                    "scale": True
-                },
-                timeout=30
-            )
-
-
-        data = response.json()
-
-
-        text = ""
-
-
-        for item in data.get("ParsedResults", []):
-
-            text += (
-                item.get("ParsedText", "")
-                + "\n"
-            )
-
-
-        print("OCR TEXT:")
-        print(text)
-
-
-        zips = re.findall(
-            r"\d{5}",
-            text
+        response = requests.post(
+            url,
+            files={"filename": image},
+            data={
+                "apikey": "helloworld",
+                "language": "eng",
+                "OCREngine": 2,
+                "scale": True
+            },
+            timeout=30
         )
 
+    print("OCR RAW RESPONSE:")
+    print(response.text)
 
-        return list(dict.fromkeys(zips))
+    data = response.json()
 
+    text = ""
 
-    except Exception as e:
+    for item in data.get("ParsedResults", []):
 
-        print("OCR ERROR:")
-        print(e)
+        text += item.get("ParsedText", "") + "\n"
 
-        return []
+    print("OCR TEXT:")
+    print(repr(text))
 
+    found = re.findall(r"\d{5}", text)
 
+    if not found:
 
-async def text_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+        found = re.findall(r"\d+", text)
 
-    text = update.message.text
+        found = [
+            x.zfill(5)
+            for x in found
+            if len(x) >= 4
+        ]
 
+    print("ZIPS FOUND:")
+    print(found)
 
-    zips = re.findall(
-        r"\d{5}",
-        text
-    )
+    return list(dict.fromkeys(found))
 
+except Exception as e:
 
-    if not zips:
+    print("OCR ERROR:")
+    print(str(e))
 
-        await update.message.reply_text(
-            "No ZIP codes found."
-        )
-
-        return
+    return []
 
 
 
