@@ -52,12 +52,12 @@ def get_income(zip_code):
     return "Not found"
 
 
+
 def make_excel(zips):
 
     results = []
 
     for z in zips:
-
         results.append(
             {
                 "ZIP": z,
@@ -65,11 +65,29 @@ def make_excel(zips):
             }
         )
 
+
     df = pd.DataFrame(results)
+
+
+    # Sort highest income to lowest income
+    df["Median_Household_Income"] = pd.to_numeric(
+        df["Median_Household_Income"],
+        errors="coerce"
+    )
+
+
+    df = df.sort_values(
+        by="Median_Household_Income",
+        ascending=False
+    )
+
 
     path = "/tmp/zip_income_results.xlsx"
 
-    df.to_excel(path, index=False)
+    df.to_excel(
+        path,
+        index=False
+    )
 
     return path
 
@@ -107,7 +125,11 @@ def read_zips(image_path):
         print(repr(text))
 
 
-        zips = re.findall(r"\d{5}", text)
+        zips = re.findall(
+            r"\d{5}",
+            text
+        )
+
 
         return list(dict.fromkeys(zips))
 
@@ -125,21 +147,28 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text
 
-    zips = re.findall(r"\d{5}", text)
+    zips = re.findall(
+        r"\d{5}",
+        text
+    )
+
 
     if not zips:
 
         await update.message.reply_text(
             "No ZIP codes found."
         )
+
         return
 
 
     zips = list(dict.fromkeys(zips))
 
+
     await update.message.reply_text(
         "Processing..."
     )
+
 
     output = make_excel(zips)
 
@@ -166,7 +195,9 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo.file_id
     )
 
+
     image_path = "/tmp/photo.jpg"
+
 
     await file.download_to_drive(image_path)
 
@@ -202,12 +233,17 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = document.file_name.lower()
 
 
-    if not (name.endswith(".csv") or name.endswith(".xlsx")):
+    if not (
+        name.endswith(".csv")
+        or name.endswith(".xlsx")
+    ):
 
         await update.message.reply_text(
             "Upload CSV or XLSX only."
         )
+
         return
+
 
 
     file = await context.bot.get_file(
@@ -221,6 +257,7 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(path)
 
 
+
     if name.endswith(".csv"):
 
         df = pd.read_csv(path)
@@ -230,12 +267,15 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.read_excel(path)
 
 
+
     if "ZIP" not in df.columns:
 
         await update.message.reply_text(
             "Your file needs a ZIP column."
         )
+
         return
+
 
 
     zips = (
@@ -247,7 +287,9 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+
     output = make_excel(zips)
+
 
 
     with open(output, "rb") as f:
@@ -262,19 +304,32 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = Application.builder().token(BOT_TOKEN).build()
 
 
+
 app.add_handler(
-    CommandHandler("start", start)
+    CommandHandler(
+        "start",
+        start
+    )
 )
 
 
+
 app.add_handler(
-    MessageHandler(filters.PHOTO, photo_handler)
+    MessageHandler(
+        filters.PHOTO,
+        photo_handler
+    )
 )
 
 
+
 app.add_handler(
-    MessageHandler(filters.Document.ALL, file_handler)
+    MessageHandler(
+        filters.Document.ALL,
+        file_handler
+    )
 )
+
 
 
 app.add_handler(
@@ -285,6 +340,8 @@ app.add_handler(
 )
 
 
+
 print("Bot running")
 
+app.run_polling()
 app.run_polling()
