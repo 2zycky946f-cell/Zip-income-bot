@@ -18,8 +18,8 @@ CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me a picture with ZIP codes.\n"
-        "I will read them and return income data."
+        "ZipIncome Bot\n\n"
+        "Send a picture with ZIP codes and I will find the income data."
     )
 
 
@@ -32,13 +32,13 @@ def get_income(zip_code):
             f"&key={CENSUS_API_KEY}"
         )
 
-        r = requests.get(url, timeout=15)
-        data = r.json()
+        response = requests.get(url, timeout=15)
+        data = response.json()
 
         if len(data) > 1:
             return int(data[1][0])
 
-    except:
+    except Exception:
         return None
 
     return None
@@ -46,36 +46,50 @@ def get_income(zip_code):
 
 def read_zips(image_path):
 
-    url = "https://api.ocr.space/parse/image"
+    try:
+        url = "https://api.ocr.space/parse/image"
 
-    with open(image_path, "rb") as image:
-        response = requests.post(
-            url,
-            files={"filename": image},
-            data={
-                "language": "eng",
-                "isOverlayRequired": False,
-                "scale": True
-            },
-            timeout=30
-        )
+        with open(image_path, "rb") as image:
+            response = requests.post(
+                url,
+                files={"filename": image},
+                data={
+                    "language": "eng",
+                    "isOverlayRequired": False,
+                    "scale": True
+                },
+                timeout=30
+            )
 
-    data = response.json()
+        data = response.json()
 
-    text = ""
+        text = ""
 
-    for item in data.get("ParsedResults", []):
-        text += item.get("ParsedText", "") + "\n"
+        for item in data.get("ParsedResults", []):
+            text += item.get("ParsedText", "") + "\n"
 
-    print("OCR TEXT:")
-    print(text)
 
-    found = re.findall(r"\d{5}", text)
+        print("OCR TEXT:")
+        print(repr(text))
 
-    print("FOUND:")
-    print(found)
 
-    return list(dict.fromkeys(found))
+        found = re.findall(r"\d{5}", text)
+
+
+        print("FOUND ZIP CODES:")
+        print(found)
+
+
+        return list(dict.fromkeys(found))
+
+
+    except Exception as e:
+
+        print("OCR ERROR:")
+        print(e)
+
+        return []
+
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -93,11 +107,13 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await file.download_to_drive(image_path)
 
+
     zips = read_zips(image_path)
+
 
     if not zips:
         await update.message.reply_text(
-            "No ZIP codes found."
+            "No ZIP codes found. Try a clearer picture with larger numbers."
         )
         return
 
@@ -105,20 +121,26 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
 
     for z in zips:
-        results.append({
-            "ZIP": z,
-            "Median_Household_Income": get_income(z)
-        })
+        results.append(
+            {
+                "ZIP": z,
+                "Median_Household_Income": get_income(z)
+            }
+        )
 
 
     df = pd.DataFrame(results)
 
     output = "/tmp/zip_results.xlsx"
 
-    df.to_excel(output, index=False)
+    df.to_excel(
+        output,
+        index=False
+    )
 
 
     with open(output, "rb") as f:
+
         await update.message.reply_document(
             document=f,
             filename="zip_results.xlsx"
@@ -127,9 +149,14 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 app = Application.builder().token(BOT_TOKEN).build()
 
+
 app.add_handler(
-    CommandHandler("start", start)
+    CommandHandler(
+        "start",
+        start
+    )
 )
+
 
 app.add_handler(
     MessageHandler(
@@ -140,5 +167,7 @@ app.add_handler(
 
 
 print("Bot running")
+
+app.run_polling()
 
 app.run_polling()
