@@ -52,7 +52,12 @@ def read_zips(image_path):
         response = requests.post(
             url,
             files={"filename": image},
-            data={"language": "eng"}
+            data={
+                "language": "eng",
+                "isOverlayRequired": False,
+                "scale": True
+            },
+            timeout=30
         )
 
     data = response.json()
@@ -60,12 +65,15 @@ def read_zips(image_path):
     text = ""
 
     for item in data.get("ParsedResults", []):
-        text += item.get("ParsedText", "")
+        text += item.get("ParsedText", "") + "\n"
 
-    zips = re.findall(r"\b\d{5}\b", text)
+    print("OCR TEXT:")
+    print(text)
 
-    return list(set(zips))
+    # catches normal ZIPs and ZIPs with spaces/dashes
+    found = re.findall(r"\d{5}", text)
 
+    return list(dict.fromkeys(found))
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
