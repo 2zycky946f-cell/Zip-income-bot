@@ -2,6 +2,7 @@ import os
 import sqlite3
 import datetime
 import secrets
+import aiohttp
 
 from telegram import (
     Update,
@@ -20,8 +21,9 @@ from telegram.ext import (
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
-ADMIN_ID = 123456789  # CHANGE THIS TO YOUR TELEGRAM ID
+ADMIN_ID = 8834288282
 
 
 # ---------------- DATABASE ---------------- #
@@ -54,86 +56,94 @@ used INTEGER DEFAULT 0
 """)
 
 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS zip_cache(
+zip TEXT PRIMARY KEY,
+income TEXT,
+population TEXT,
+saved TEXT
+)
+""")
+
+
 db.commit()
 
 
 
-# ---------------- COMMAND MENU ---------------- #
+# ---------------- SAFE COMMAND MENU ---------------- #
 
 async def set_commands(app):
 
-    user_commands = [
+    users = [
         BotCommand("start", "Start bot"),
-        BotCommand("redeem", "Redeem premium key"),
-        BotCommand("lookup", "Run lookup"),
+        BotCommand("lookup", "Lookup ZIP income"),
+        BotCommand("redeem", "Redeem key"),
     ]
 
 
-    admin_commands = [
+    admin = [
         BotCommand("start", "Start bot"),
-        BotCommand("redeem", "Redeem premium key"),
-        BotCommand("lookup", "Run lookup"),
-        BotCommand("createkey", "Create premium key"),
-        BotCommand("stats", "View bot stats"),
+        BotCommand("lookup", "Lookup ZIP income"),
+        BotCommand("redeem", "Redeem key"),
+        BotCommand("createkey", "Create key"),
+        BotCommand("stats", "View stats"),
         BotCommand("ban", "Ban user"),
     ]
 
 
-    # Everyone gets normal commands
-    await app.bot.set_my_commands(
-        user_commands
-    )
+    try:
+
+        await app.bot.set_my_commands(users)
 
 
-    # Only you get admin commands
-    await app.bot.set_my_commands(
-        admin_commands,
-        scope=BotCommandScopeChat(
-            chat_id=ADMIN_ID
+        await app.bot.set_my_commands(
+            admin,
+            scope=BotCommandScopeChat(
+                chat_id=ADMIN_ID
+            )
         )
-    )
+
+
+        print("✅ Command menu loaded")
+
+
+    except Exception as e:
+
+        print(
+            "⚠️ Command menu failed but bot continues:",
+            e
+        )
 
 
 
-# ---------------- USER FUNCTIONS ---------------- #
+# ---------------- USERS ---------------- #
 
-def create_user(user_id):
+def create_user(uid):
 
     cur.execute(
-        "SELECT user_id FROM users WHERE user_id=?",
-        (user_id,)
+        "INSERT OR IGNORE INTO users(user_id) VALUES(?)",
+        (uid,)
     )
 
-    if not cur.fetchone():
-
-        cur.execute(
-            "INSERT INTO users(user_id) VALUES(?)",
-            (user_id,)
-        )
-
-        db.commit()
+    db.commit()
 
 
 
-def get_user(user_id):
+def premium(uid):
 
-    create_user(user_id)
+    create_user(uid)
 
     cur.execute(
         "SELECT * FROM users WHERE user_id=?",
-        (user_id,)
+        (uid,)
     )
 
-    return cur.fetchone()
+    user = cur.fetchone()
 
-
-
-def is_premium(user_id):
-
-    user = get_user(user_id)
 
     if not user[2]:
         return False
+
 
     return (
         datetime.datetime.fromisoformat(user[2])
@@ -145,81 +155,179 @@ def is_premium(user_id):
 
 # ---------------- START ---------------- #
 
-async def start(update: Update, context):
+async def start(update, context):
 
     create_user(update.effective_user.id)
 
+
     buttons = [
+
         [
             InlineKeyboardButton(
-                "🔑 Redeem Key",
-                callback_data="redeem"
+                "🔍 Lookup ZIP",
+                callback_data="lookup"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "👤 Account",
                 callback_data="account"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "💎 Premium",
                 callback_data="premium"
             )
         ]
+
     ]
 
 
     await update.message.reply_text(
-        "🔥 Premium Income Bot\n\nChoose:",
+        "🔥 Premium Income Bot\nChoose:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 
 
-# ---------------- BUTTONS ---------------- #
+# ---------------- LOOKUP ---------------- #
 
-async def buttons(update, context):
+async def lookup(update, context):
 
-    q = update.callback_query
-    await q.answer()
+    if not context.args:
+
+        await update.message.reply_text(
+            "Use:\n/lookup ZIP"
+        )
+        return
 
 
-    if q.data == "account":
+    zipcode = context.args[0]
 
-        user = get_user(q.from_user.id)
 
-        await q.edit_message_text(
+    # cache check
+
+    cur.execute(
+        "SELECT * FROM zip_cache WHERE zip=?",
+        (zipcode,)
+    )
+
+    cached = cur.fetchone()
+
+
+    if cached:
+
+        await update.message.reply_text(
 f"""
-👤 Account
+⚡ FAST RESULT
 
-Plan:
-{user[1]}
+ZIP:
+{zipcode}
 
-Searches:
-{user[3]}
+Income:
+{cached[1]}
 
-Expires:
-{user[2] or "Never"}
+Population:
+{cached[2]}
 
-Premium:
-{"YES ✅" if is_premium(q.from_user.id) else "NO ❌"}
+Saved:
+{cached[3]}
+"""
+        )
+
+        return
+
+
+
+    await update.message.reply_text(
+        "🔍 Searching..."
+    )
+
+
+    try:
+
+        url = (
+        "https://api.census.gov/data/2023/acs/acs5/profile?"
+        "get=NAME,DP03_0062PE,DP05_0001E&"
+        f"for=zip%20code%20tabulation%20area:{zipcode}"
+        f"&key={CENSUS_API_KEY}"
+        )
+
+
+        async with aiohttp.ClientSession() as session:
+
+            async with session.get(
+                url,
+                timeout=10
+            ) as response:
+
+                data = await response.json()
+
+
+
+        income = data[1][1]
+        population = data[1][2]
+
+
+
+        cur.execute(
+"""
+INSERT INTO zip_cache
+(zip,income,population,saved)
+VALUES(?,?,?,?)
+""",
+(
+zipcode,
+income,
+population,
+datetime.datetime.now().strftime("%Y-%m-%d")
+)
+)
+
+
+        cur.execute(
+"""
+UPDATE users
+SET searches=searches+1
+WHERE user_id=?
+""",
+(update.effective_user.id,)
+)
+
+
+        db.commit()
+
+
+
+        await update.message.reply_text(
+f"""
+📊 ZIP REPORT
+
+ZIP:
+{zipcode}
+
+Income:
+{income}
+
+Population:
+{population}
+
+✅ Saved for instant future searches
 """
         )
 
 
-    elif q.data == "redeem":
 
-        await q.edit_message_text(
-            "🔑 Type:\n/redeem YOUR_KEY"
-        )
+    except Exception as e:
+
+        print("LOOKUP ERROR:", e)
 
 
-    elif q.data == "premium":
-
-        await q.edit_message_text(
-            "💎 Premium gives you full access."
+        await update.message.reply_text(
+            "⚠️ Census failed. Try again later."
         )
 
 
@@ -229,9 +337,11 @@ Premium:
 async def redeem(update, context):
 
     if not context.args:
+
         await update.message.reply_text(
             "Use /redeem KEY"
         )
+
         return
 
 
@@ -257,9 +367,10 @@ async def redeem(update, context):
     if data[2]:
 
         await update.message.reply_text(
-            "❌ Key already used"
+            "❌ Used key"
         )
         return
+
 
 
     expire = (
@@ -298,6 +409,55 @@ update.effective_user.id
 
 
 
+# ---------------- BUTTONS ---------------- #
+
+async def buttons(update, context):
+
+    q = update.callback_query
+    await q.answer()
+
+
+    if q.data == "account":
+
+        cur.execute(
+            "SELECT * FROM users WHERE user_id=?",
+            (q.from_user.id,)
+        )
+
+        u = cur.fetchone()
+
+
+        await q.edit_message_text(
+f"""
+👤 Account
+
+Plan:
+{u[1]}
+
+Searches:
+{u[3]}
+
+Premium:
+{"YES ✅" if premium(q.from_user.id) else "NO ❌"}
+"""
+        )
+
+
+    elif q.data == "lookup":
+
+        await q.edit_message_text(
+            "Use:\n/lookup ZIP"
+        )
+
+
+    elif q.data == "premium":
+
+        await q.edit_message_text(
+            "💎 Premium = faster access + extra features"
+        )
+
+
+
 # ---------------- ADMIN ---------------- #
 
 async def createkey(update, context):
@@ -321,7 +481,7 @@ async def createkey(update, context):
 
     await update.message.reply_text(
 f"""
-🔑 KEY CREATED
+🔑 KEY
 
 {key}
 
@@ -345,23 +505,8 @@ async def stats(update, context):
     users = cur.fetchone()[0]
 
 
-    cur.execute(
-        "SELECT COUNT(*) FROM keys"
-    )
-
-    keys = cur.fetchone()[0]
-
-
     await update.message.reply_text(
-f"""
-📊 Stats
-
-Users:
-{users}
-
-Keys:
-{keys}
-"""
+        f"📊 Users: {users}"
     )
 
 
@@ -371,22 +516,12 @@ Keys:
 app = Application.builder().token(BOT_TOKEN).build()
 
 
-app.add_handler(
-    CommandHandler("start", start)
-)
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("lookup", lookup))
+app.add_handler(CommandHandler("redeem", redeem))
 
-app.add_handler(
-    CommandHandler("redeem", redeem)
-)
-
-app.add_handler(
-    CommandHandler("createkey", createkey)
-)
-
-app.add_handler(
-    CommandHandler("stats", stats)
-)
-
+app.add_handler(CommandHandler("createkey", createkey))
+app.add_handler(CommandHandler("stats", stats))
 
 app.add_handler(
     CallbackQueryHandler(buttons)
@@ -397,5 +532,6 @@ app.post_init = set_commands
 
 
 print("🔥 Premium bot running")
+
 
 app.run_polling()
