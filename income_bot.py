@@ -1,4 +1,11 @@
-import os, re, sqlite3, secrets, datetime, aiohttp,easyocr
+import os
+import re
+import sqlite3
+import secrets
+import datetime
+import aiohttp
+import easyocr
+import asyncio
 
 from telegram import (
     Update,
