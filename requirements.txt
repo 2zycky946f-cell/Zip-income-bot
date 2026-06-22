@@ -1,8 +1,5 @@
-python-telegram-bot==22.1
-pandas
-openpyxl
-requests
-pillow
+python-telegram-bot==22.python-telegram-bot==22.1
 aiohttp
 easyocr
 torch
+pillow
