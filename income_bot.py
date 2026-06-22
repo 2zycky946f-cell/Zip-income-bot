@@ -22,8 +22,7 @@ CENSUS_KEY = os.getenv("CENSUS_API_KEY")
 
 ADMIN = 8834288282
 
-BTC = "YOUR_BTC_ADDRESS"
-USDT = "YOUR_USDT_ADDRESS"
+BTC = "bc1qeyfhgadc52lzecacafgh9n7hy84y2gfhd76evc"
 
 
 # ---------- DATABASE ----------
@@ -57,6 +56,15 @@ CREATE TABLE IF NOT EXISTS cache(
 zip TEXT PRIMARY KEY,
 income TEXT,
 population TEXT
+)
+""")
+
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS payments(
+user_id INTEGER,
+plan TEXT,
+status TEXT DEFAULT 'pending'
 )
 """)
 
@@ -304,25 +312,24 @@ or upload screenshot 📷
 
     elif q.data=="premium":
 
-        await q.edit_message_text(
+    await q.edit_message_text(
 f"""
 💎 Premium Plans
 
-⚡ 1 Day $1.99
-🔥 1 Week $5.99
-💎 1 Month $14.99
-👑 Lifetime $49.99
+⚡ 1 Day Pass - $1.99
+🔥 1 Week Pass - $5.99
+💎 1 Month Pass - $14.99
+👑 Lifetime - $49.99
 
 
-Crypto:
+₿ Bitcoin Payment Only:
 
-BTC:
 {BTC}
 
-USDT:
-{USDT}
+
+After payment contact admin for activation.
 """
-        )
+)
 
 
     elif q.data=="account":
@@ -351,11 +358,74 @@ Expires:
 {u[2] or "Never"}
 """
         )
+async def paid(update,context):
 
+    await update.message.reply_text(
+"""
+✅ Payment request sent.
+
+Admin will verify your Bitcoin payment and send your key.
+"""
+    )
 
 
 # ---------- ADMIN ----------
+# ---------- ADMIN ----------
 
+
+async def approve(update,context):
+
+    if update.effective_user.id != ADMIN:
+        return
+
+    user_id = int(context.args[0])
+    plan = context.args[1]
+
+    key = secrets.token_hex(8)
+
+    cur.execute(
+        "INSERT INTO keys VALUES(?,?,0)",
+        (key,plan)
+    )
+
+    expire = (
+        "LIFETIME"
+        if plan=="lifetime"
+        else
+        (
+        datetime.datetime.now()
+        +
+        datetime.timedelta(days=int(plan))
+        ).isoformat()
+    )
+
+    cur.execute(
+        "UPDATE users SET plan='PREMIUM',expire=? WHERE id=?",
+        (expire,user_id)
+    )
+
+    db.commit()
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"""
+🔥 Payment Confirmed!
+
+🔑 Your key:
+{key}
+
+Plan:
+{plan}
+"""
+    )
+
+    await update.message.reply_text(
+        "✅ Approved"
+    )
+
+
+
+async def createkey(update,context):
 async def createkey(update,context):
 
     if update.effective_user.id != ADMIN:
@@ -427,7 +497,6 @@ async def menu(app):
     )
 
 
-
 # ---------- RUN ----------
 
 app = Application.builder().token(TOKEN).build()
@@ -444,7 +513,7 @@ CommandHandler("createkey",createkey)
 app.add_handler(
 CommandHandler("givepremium",givepremium)
 )
-
+app.add_handler(CommandHandler("paid",paid))
 app.add_handler(
 MessageHandler(
 filters.TEXT & ~filters.COMMAND,
@@ -462,7 +531,6 @@ image
 app.add_handler(
 CallbackQueryHandler(buttons)
 )
-
 
 app.post_init = menu
 
