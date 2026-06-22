@@ -1,6 +1,8 @@
-python-telegram-bot==22.1
+python-telegram-bot==21.10
 aiohttp
 easyocr
+opencv-python-headless
+numpy
+pillow
 torch
 torchvision
-pillow
