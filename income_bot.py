@@ -115,7 +115,7 @@ def make_message(zips):
 
 
 
-def def read_zips(image_path):
+defdef read_zips(image_path):
 
     try:
 
