@@ -1,10 +1,12 @@
 import os
 import re
 import sqlite3
-import datetime
 import secrets
+import datetime
 import aiohttp
 import easyocr
+
+from PIL import Image
 
 from telegram import (
     Update,
@@ -17,53 +19,43 @@ from telegram import (
 from telegram.ext import (
     Application,
     CommandHandler,
-    CallbackQueryHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters
 )
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
+TOKEN = os.getenv("BOT_TOKEN")
+CENSUS_KEY = os.getenv("CENSUS_API_KEY")
 
-ADMIN_ID = 8834288282
+ADMIN = 8834288282
 
-
-# ---------- OCR ---------- #
-
-reader = easyocr.Reader(["en"])
+BTC = "YOUR_BTC_ADDRESS"
+USDT = "YOUR_USDT_ADDRESS"
 
 
+# ---------- DATABASE ----------
 
-# ---------- DATABASE ---------- #
-
-db = sqlite3.connect(
-    "bot.db",
-    check_same_thread=False
-)
-
+db = sqlite3.connect("bot.db", check_same_thread=False)
 cur = db.cursor()
-
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
-user_id INTEGER PRIMARY KEY,
+id INTEGER PRIMARY KEY,
 plan TEXT DEFAULT 'FREE',
-expires TEXT,
+expire TEXT,
 searches INTEGER DEFAULT 0
 )
 """)
 
-
 cur.execute("""
 CREATE TABLE IF NOT EXISTS keys(
 key TEXT PRIMARY KEY,
-days INTEGER,
+days TEXT,
 used INTEGER DEFAULT 0
 )
 """)
-
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS cache(
@@ -73,156 +65,34 @@ population TEXT
 )
 """)
 
-
 db.commit()
 
 
-
-# ---------- COMMAND MENU ---------- #
-
-async def setup_commands(app):
-
-    try:
-
-        normal = [
-            BotCommand("start","Start"),
-            BotCommand("lookup","Lookup ZIP"),
-            BotCommand("redeem","Redeem key")
-        ]
-
-
-        admin = normal + [
-            BotCommand("createkey","Create key"),
-            BotCommand("stats","Stats")
-        ]
-
-
-        await app.bot.set_my_commands(normal)
-
-        await app.bot.set_my_commands(
-            admin,
-            scope=BotCommandScopeChat(
-                chat_id=ADMIN_ID
-            )
-        )
-
-        print("Commands loaded")
-
-    except Exception as e:
-
-        print(
-            "Command error:",
-            e
-        )
+ocr = easyocr.Reader(["en"])
 
 
 
-# ---------- USERS ---------- #
+# ---------- HELPERS ----------
 
-def create_user(uid):
-
+def user(uid):
     cur.execute(
-        "INSERT OR IGNORE INTO users(user_id) VALUES(?)",
+        "INSERT OR IGNORE INTO users(id) VALUES(?)",
         (uid,)
     )
-
     db.commit()
 
 
-
-def premium(uid):
-
-    create_user(uid)
-
-    cur.execute(
-        "SELECT * FROM users WHERE user_id=?",
-        (uid,)
-    )
-
-    user = cur.fetchone()
-
-
-    if not user[2]:
-        return False
-
-
-    return (
-        datetime.datetime.fromisoformat(user[2])
-        >
-        datetime.datetime.now()
-    )
-
-
-
-# ---------- START ---------- #
-
-async def start(update, context):
-
-    create_user(
-        update.effective_user.id
-    )
-
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "🔍 Lookup ZIP",
-                callback_data="lookup"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👤 Account",
-                callback_data="account"
-            )
-        ]
-
-    ]
-
-
-    await update.message.reply_text(
-"""
-🔥 ZIP Income Bot
-
-Send ZIP codes or screenshots.
-
-Example:
-93725
-93291
-93654
-""",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
-
-
-
-# ---------- ZIP SEARCH ---------- #
-
-async def search_zip(zipcode):
+async def income(zipcode):
 
     cur.execute(
         "SELECT * FROM cache WHERE zip=?",
         (zipcode,)
     )
 
-    saved = cur.fetchone()
+    old = cur.fetchone()
 
-
-    if saved:
-
-        return f"""
-⚡ {zipcode}
-
-Income:
-{saved[1]}
-
-Population:
-{saved[2]}
-
-Cached
-"""
+    if old:
+        return f"⚡ {zipcode}\nIncome: {old[1]}\nPopulation: {old[2]}"
 
 
     try:
@@ -231,120 +101,122 @@ Cached
         "https://api.census.gov/data/2023/acs/acs5/profile?"
         "get=NAME,DP03_0062PE,DP05_0001E&"
         f"for=zip%20code%20tabulation%20area:{zipcode}"
-        f"&key={CENSUS_API_KEY}"
+        f"&key={CENSUS_KEY}"
         )
 
+        async with aiohttp.ClientSession() as s:
 
-        async with aiohttp.ClientSession() as session:
-
-            async with session.get(
-                url,
-                timeout=15
-            ) as r:
+            async with s.get(url,timeout=15) as r:
 
                 data = await r.json()
 
 
-        income = data[1][1]
-        population = data[1][2]
+        inc = data[1][1]
+        pop = data[1][2]
 
 
         cur.execute(
-"""
-INSERT OR REPLACE INTO cache
-VALUES(?,?,?)
-""",
-(
-zipcode,
-income,
-population
-)
-)
+            "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
+            (zipcode,inc,pop)
+        )
 
         db.commit()
 
 
-        return f"""
-📊 {zipcode}
-
-Income:
-{income}
-
-Population:
-{population}
-"""
+        return f"📊 {zipcode}\nIncome: {inc}\nPopulation: {pop}"
 
 
-    except Exception as e:
-
-        print(
-            "SEARCH ERROR:",
-            e
-        )
+    except:
 
         return f"❌ {zipcode} failed"
 
 
 
-# ---------- TEXT ---------- #
+# ---------- START ----------
 
-async def zip_text(update, context):
+async def start(update,context):
+
+    user(update.effective_user.id)
+
+
+    keys = [
+        [
+            InlineKeyboardButton(
+                "🔍 Lookup",
+                callback_data="lookup"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "💎 Premium",
+                callback_data="premium"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "👤 Account",
+                callback_data="account"
+            )
+        ]
+    ]
+
+
+    await update.message.reply_text(
+        "🔥 ZIP Income Bot",
+        reply_markup=InlineKeyboardMarkup(keys)
+    )
+
+
+
+# ---------- ZIP TEXT ----------
+
+async def zip_text(update,context):
 
     zips = re.findall(
         r"\b\d{5}\b",
         update.message.text
     )
 
-
     if not zips:
         return
 
 
     await update.message.reply_text(
-        "🔍 Checking ZIP codes..."
+        "🔍 Searching..."
     )
 
 
-    results=[]
-
+    out=[]
 
     for z in zips:
-
-        results.append(
-            await search_zip(z)
+        out.append(
+            await income(z)
         )
 
 
     await update.message.reply_text(
-        "\n\n".join(results)
+        "\n\n".join(out)
     )
 
 
 
-# ---------- IMAGE OCR ---------- #
+# ---------- OCR ----------
 
-async def image_zip(update, context):
+async def photo(update,context):
 
     await update.message.reply_text(
         "📷 Reading image..."
     )
 
 
-    photo = update.message.photo[-1]
+    f = await update.message.photo[-1].get_file()
 
-    file = await photo.get_file()
-
-    path = "photo.jpg"
-
-    await file.download_to_drive(path)
-
-
-    results = reader.readtext(path)
+    await f.download_to_drive("img.jpg")
 
 
     text = " ".join(
-        item[1]
-        for item in results
+        x[1]
+        for x in ocr.readtext("img.jpg")
     )
 
 
@@ -357,40 +229,33 @@ async def image_zip(update, context):
     if not zips:
 
         await update.message.reply_text(
-            "❌ No ZIP codes found"
+            "❌ No ZIP found"
         )
-
         return
 
 
-
-    await update.message.reply_text(
-        f"✅ Found:\n{zips}"
-    )
-
-
-    answers=[]
-
+    result=[]
 
     for z in zips:
-
-        answers.append(
-            await search_zip(z)
+        result.append(
+            await income(z)
         )
 
 
     await update.message.reply_text(
-        "\n\n".join(answers)
+        "✅ Found:\n" +
+        str(zips) +
+        "\n\n" +
+        "\n\n".join(result)
     )
 
 
 
-# ---------- BUTTONS ---------- #
+# ---------- BUTTONS ----------
 
-async def buttons(update, context):
+async def buttons(update,context):
 
     q = update.callback_query
-
     await q.answer()
 
 
@@ -400,25 +265,49 @@ async def buttons(update, context):
 """
 🔍 Send ZIP codes
 
-Examples:
+Example:
 
 93725
 93291
 93654
 
-Or upload a screenshot 📷
+or upload screenshot 📷
 """
+        )
+
+
+    elif q.data=="premium":
+
+        await q.edit_message_text(
+"""
+💎 Premium
+
+⚡ 1 Day - $1.99
+🔥 1 Week - $5.99
+💎 1 Month - $14.99
+👑 Lifetime - $49.99
+
+Crypto only.
+
+BTC:
+%s
+
+USDT:
+%s
+"""%(BTC,USDT)
         )
 
 
     elif q.data=="account":
 
+        user(q.from_user.id)
+
         cur.execute(
-            "SELECT * FROM users WHERE user_id=?",
+            "SELECT * FROM users WHERE id=?",
             (q.from_user.id,)
         )
 
-        u = cur.fetchone()
+        u=cur.fetchone()
 
 
         await q.edit_message_text(
@@ -431,24 +320,24 @@ Plan:
 Searches:
 {u[3]}
 
-Premium:
-{"YES ✅" if premium(q.from_user.id) else "NO ❌"}
+Expires:
+{u[2] or "Never"}
 """
         )
 
 
 
-# ---------- ADMIN ---------- #
+# ---------- ADMIN ----------
 
-async def createkey(update, context):
+async def createkey(update,context):
 
-    if update.effective_user.id != ADMIN_ID:
+    if update.effective_user.id != ADMIN:
         return
 
 
-    days = int(context.args[0])
+    days=context.args[0]
 
-    key = secrets.token_hex(8)
+    key=secrets.token_hex(8)
 
 
     cur.execute(
@@ -460,32 +349,76 @@ async def createkey(update, context):
 
 
     await update.message.reply_text(
-        f"🔑 {key}\nDays: {days}"
+        f"🔑 {key}\nPlan: {days}"
     )
 
 
 
-# ---------- RUN ---------- #
+async def givepremium(update,context):
 
-app = Application.builder().token(BOT_TOKEN).build()
-
-
-app.add_handler(
-CommandHandler("start",start)
-)
-
-app.add_handler(
-CommandHandler("lookup",zip_text)
-)
-
-app.add_handler(
-CommandHandler("createkey",createkey)
-)
+    if update.effective_user.id != ADMIN:
+        return
 
 
-app.add_handler(
-CallbackQueryHandler(buttons)
-)
+    uid=int(context.args[0])
+    days=context.args[1]
+
+
+    expire="LIFETIME" if days=="lifetime" else (
+        datetime.datetime.now()
+        +
+        datetime.timedelta(days=int(days))
+    ).isoformat()
+
+
+    cur.execute(
+        "UPDATE users SET plan='PREMIUM',expire=? WHERE id=?",
+        (expire,uid)
+    )
+
+    db.commit()
+
+
+    await update.message.reply_text(
+        "✅ Premium added"
+    )
+
+
+
+async def menu(app):
+
+    try:
+
+        await app.bot.set_my_commands(
+            [
+                BotCommand("start","Start"),
+                BotCommand("lookup","Lookup")
+            ]
+        )
+
+        await app.bot.set_my_commands(
+            [
+                BotCommand("createkey","Create key"),
+                BotCommand("givepremium","Give premium")
+            ],
+            scope=BotCommandScopeChat(
+                chat_id=ADMIN
+            )
+        )
+
+    except Exception as e:
+        print(e)
+
+
+
+# ---------- RUN ----------
+
+app = Application.builder().token(TOKEN).build()
+
+
+app.add_handler(CommandHandler("start",start))
+app.add_handler(CommandHandler("createkey",createkey))
+app.add_handler(CommandHandler("givepremium",givepremium))
 
 
 app.add_handler(
@@ -499,15 +432,19 @@ zip_text
 app.add_handler(
 MessageHandler(
 filters.PHOTO,
-image_zip
+photo
 )
 )
 
 
-app.post_init = setup_commands
+app.add_handler(
+CallbackQueryHandler(buttons)
+)
 
 
-print("🔥 Premium bot running")
+app.post_init = menu
 
+
+print("🔥 Bot running")
 
 app.run_polling()
