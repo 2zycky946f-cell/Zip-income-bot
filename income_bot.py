@@ -1,6 +1,10 @@
 import os
+import re
 import requests
 import pandas as pd
+import pytesseract
+
+from PIL import Image
 
 from telegram import Update
 from telegram.ext import (
@@ -17,20 +21,13 @@ CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "ZipIncome Bot\n\n"
-        "Upload a CSV or XLSX file containing a column named ZIP.\n\n"
-        "Example:\n"
-        "ZIP\n"
-        "93618\n"
-        "93722\n"
-        "90210"
+        "Send me a picture with ZIP codes.\n"
+        "I will read them and return income data."
     )
 
 
 def get_income(zip_code):
     try:
-        zip_code = str(zip_code).strip().zfill(5)
-
         url = (
             "https://api.census.gov/data/2023/acs/acs5"
             f"?get=B19013_001E"
@@ -38,85 +35,73 @@ def get_income(zip_code):
             f"&key={CENSUS_API_KEY}"
         )
 
-        response = requests.get(url, timeout=15)
-
-        if response.status_code != 200:
-            return None
-
-        data = response.json()
+        r = requests.get(url, timeout=15)
+        data = r.json()
 
         if len(data) > 1:
             return int(data[1][0])
 
-    except Exception:
+    except:
         return None
 
     return None
 
 
-async def process_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def read_zips(image_path):
+    text = pytesseract.image_to_string(
+        Image.open(image_path)
+    )
 
-    document = update.message.document
+    zips = re.findall(r"\b\d{5}\b", text)
 
-    if not document:
-        return
+    return list(set(zips))
 
-    file_name = document.file_name.lower()
 
-    if not (file_name.endswith(".csv") or file_name.endswith(".xlsx")):
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+        "Reading image..."
+    )
+
+    photo = update.message.photo[-1]
+
+    file = await context.bot.get_file(
+        photo.file_id
+    )
+
+    image_path = "/tmp/photo.jpg"
+
+    await file.download_to_drive(image_path)
+
+    zips = read_zips(image_path)
+
+    if not zips:
         await update.message.reply_text(
-            "Please upload a CSV or XLSX file."
+            "No ZIP codes found."
         )
         return
 
-    await update.message.reply_text(
-        "Processing file... please wait."
-    )
 
-    telegram_file = await context.bot.get_file(
-        document.file_id
-    )
+    results = []
 
-    input_path = f"/tmp/{document.file_name}"
+    for z in zips:
+        results.append({
+            "ZIP": z,
+            "Median_Household_Income": get_income(z)
+        })
 
-    await telegram_file.download_to_drive(input_path)
 
-    try:
+    df = pd.DataFrame(results)
 
-        if file_name.endswith(".csv"):
-            df = pd.read_csv(input_path)
-        else:
-            df = pd.read_excel(input_path)
+    output = "/tmp/zip_results.xlsx"
 
-        if "ZIP" not in df.columns:
-            await update.message.reply_text(
-                "Your file must contain a column named ZIP."
-            )
-            return
+    df.to_excel(output, index=False)
 
-        incomes = []
 
-        for zip_code in df["ZIP"]:
-            income = get_income(zip_code)
-            incomes.append(income)
-
-        df["Median_Household_Income"] = incomes
-
-        output_path = "/tmp/zip_income_results.xlsx"
-
-        df.to_excel(output_path, index=False)
-
-        with open(output_path, "rb") as result_file:
-            await update.message.reply_document(
-                document=result_file,
-                filename="zip_income_results.xlsx",
-                caption="Finished processing ZIP income data."
-            )
-
-    except Exception as e:
-
-        await update.message.reply_text(
-            f"Error processing file: {e}"
+    with open(output, "rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename="zip_results.xlsx"
         )
 
 
@@ -128,11 +113,12 @@ app.add_handler(
 
 app.add_handler(
     MessageHandler(
-        filters.Document.ALL,
-        process_file
+        filters.PHOTO,
+        photo_handler
     )
 )
 
-print("ZipIncome Bot running...")
+
+print("Bot running")
 
 app.run_polling()
