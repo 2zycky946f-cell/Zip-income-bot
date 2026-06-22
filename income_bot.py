@@ -63,18 +63,13 @@ population TEXT
 db.commit()
 
 
-# ---------- OCR LAZY LOAD ----------
+# ---------- OCR ----------
 
-ocr = None
+print("Loading OCR...")
 
-def get_ocr():
-    global ocr
+ocr = easyocr.Reader(["en"])
 
-    if ocr is None:
-        print("Loading OCR...")
-        ocr = easyocr.Reader(["en"])
-
-    return ocr
+print("OCR Ready")
 
 
 
@@ -221,7 +216,6 @@ async def image(update,context):
         "📷 Reading image..."
     )
 
-
     try:
 
         file = await update.message.photo[-1].get_file()
@@ -231,12 +225,9 @@ async def image(update,context):
         )
 
 
-        reader = get_ocr()
-
-
         text = " ".join(
             x[1]
-            for x in reader.readtext("img.jpg")
+            for x in ocr.readtext("img.jpg")
         )
 
 
@@ -247,31 +238,38 @@ async def image(update,context):
 
 
         if not zips:
+
             await update.message.reply_text(
                 "❌ No ZIP found"
             )
             return
 
 
-        answers=[]
+        await update.message.reply_text(
+            f"✅ Found:\n{zips}\n\n🔍 Searching..."
+        )
+
+
+        results=[]
+
 
         for z in zips:
-            answers.append(
+            results.append(
                 await lookup_zip(z)
             )
 
 
         await update.message.reply_text(
-            "✅ Found:\n"
-            + str(zips)
-            + "\n\n"
-            + "\n\n".join(answers)
+            "\n\n".join(results)
         )
 
 
     except Exception as e:
 
-        print("OCR ERROR:",e)
+        print(
+            "OCR ERROR:",
+            e
+        )
 
         await update.message.reply_text(
             "❌ Image error"
