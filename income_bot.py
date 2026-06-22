@@ -1,12 +1,4 @@
-import os
-import re
-import sqlite3
-import secrets
-import datetime
-import aiohttp
-import easyocr
-
-from PIL import Image
+import os, re, sqlite3, secrets, datetime, aiohttp, easyocr
 
 from telegram import (
     Update,
@@ -21,7 +13,6 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    ContextTypes,
     filters
 )
 
@@ -37,7 +28,11 @@ USDT = "YOUR_USDT_ADDRESS"
 
 # ---------- DATABASE ----------
 
-db = sqlite3.connect("bot.db", check_same_thread=False)
+db = sqlite3.connect(
+    "bot.db",
+    check_same_thread=False
+)
+
 cur = db.cursor()
 
 cur.execute("""
@@ -68,13 +63,24 @@ population TEXT
 db.commit()
 
 
-ocr = easyocr.Reader(["en"])
+# ---------- OCR LAZY LOAD ----------
+
+ocr = None
+
+def get_ocr():
+    global ocr
+
+    if ocr is None:
+        print("Loading OCR...")
+        ocr = easyocr.Reader(["en"])
+
+    return ocr
 
 
 
 # ---------- HELPERS ----------
 
-def user(uid):
+def add_user(uid):
     cur.execute(
         "INSERT OR IGNORE INTO users(id) VALUES(?)",
         (uid,)
@@ -82,17 +88,18 @@ def user(uid):
     db.commit()
 
 
-async def income(zipcode):
+
+async def lookup_zip(z):
 
     cur.execute(
         "SELECT * FROM cache WHERE zip=?",
-        (zipcode,)
+        (z,)
     )
 
     old = cur.fetchone()
 
     if old:
-        return f"⚡ {zipcode}\nIncome: {old[1]}\nPopulation: {old[2]}"
+        return f"⚡ {z}\nIncome: {old[1]}\nPopulation: {old[2]}"
 
 
     try:
@@ -100,35 +107,41 @@ async def income(zipcode):
         url = (
         "https://api.census.gov/data/2023/acs/acs5/profile?"
         "get=NAME,DP03_0062PE,DP05_0001E&"
-        f"for=zip%20code%20tabulation%20area:{zipcode}"
+        f"for=zip%20code%20tabulation%20area:{z}"
         f"&key={CENSUS_KEY}"
         )
 
+
         async with aiohttp.ClientSession() as s:
 
-            async with s.get(url,timeout=15) as r:
+            async with s.get(
+                url,
+                timeout=15
+            ) as r:
 
                 data = await r.json()
 
 
-        inc = data[1][1]
+        income = data[1][1]
         pop = data[1][2]
 
 
         cur.execute(
             "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
-            (zipcode,inc,pop)
+            (z,income,pop)
         )
 
         db.commit()
 
 
-        return f"📊 {zipcode}\nIncome: {inc}\nPopulation: {pop}"
+        return f"📊 {z}\nIncome: {income}\nPopulation: {pop}"
 
 
-    except:
+    except Exception as e:
 
-        return f"❌ {zipcode} failed"
+        print(e)
+
+        return f"❌ {z} failed"
 
 
 
@@ -136,10 +149,10 @@ async def income(zipcode):
 
 async def start(update,context):
 
-    user(update.effective_user.id)
+    add_user(update.effective_user.id)
 
 
-    keys = [
+    buttons = [
         [
             InlineKeyboardButton(
                 "🔍 Lookup",
@@ -163,14 +176,14 @@ async def start(update,context):
 
     await update.message.reply_text(
         "🔥 ZIP Income Bot",
-        reply_markup=InlineKeyboardMarkup(keys)
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 
 
-# ---------- ZIP TEXT ----------
+# ---------- TEXT ZIP ----------
 
-async def zip_text(update,context):
+async def text_zip(update,context):
 
     zips = re.findall(
         r"\b\d{5}\b",
@@ -186,68 +199,83 @@ async def zip_text(update,context):
     )
 
 
-    out=[]
+    result=[]
 
     for z in zips:
-        out.append(
-            await income(z)
+        result.append(
+            await lookup_zip(z)
         )
 
 
     await update.message.reply_text(
-        "\n\n".join(out)
+        "\n\n".join(result)
     )
 
 
 
-# ---------- OCR ----------
+# ---------- IMAGE ----------
 
-async def photo(update,context):
+async def image(update,context):
 
     await update.message.reply_text(
         "📷 Reading image..."
     )
 
 
-    f = await update.message.photo[-1].get_file()
+    try:
 
-    await f.download_to_drive("img.jpg")
+        file = await update.message.photo[-1].get_file()
 
-
-    text = " ".join(
-        x[1]
-        for x in ocr.readtext("img.jpg")
-    )
+        await file.download_to_drive(
+            "img.jpg"
+        )
 
 
-    zips = re.findall(
-        r"\b\d{5}\b",
-        text
-    )
+        reader = get_ocr()
 
 
-    if not zips:
+        text = " ".join(
+            x[1]
+            for x in reader.readtext("img.jpg")
+        )
+
+
+        zips = re.findall(
+            r"\b\d{5}\b",
+            text
+        )
+
+
+        if not zips:
+            await update.message.reply_text(
+                "❌ No ZIP found"
+            )
+            return
+
+
+        answers=[]
+
+        for z in zips:
+            answers.append(
+                await lookup_zip(z)
+            )
+
 
         await update.message.reply_text(
-            "❌ No ZIP found"
-        )
-        return
-
-
-    result=[]
-
-    for z in zips:
-        result.append(
-            await income(z)
+            "✅ Found:\n"
+            + str(zips)
+            + "\n\n"
+            + "\n\n".join(answers)
         )
 
 
-    await update.message.reply_text(
-        "✅ Found:\n" +
-        str(zips) +
-        "\n\n" +
-        "\n\n".join(result)
-    )
+    except Exception as e:
+
+        print("OCR ERROR:",e)
+
+        await update.message.reply_text(
+            "❌ Image error"
+        )
 
 
 
@@ -279,35 +307,36 @@ or upload screenshot 📷
     elif q.data=="premium":
 
         await q.edit_message_text(
-"""
-💎 Premium
+f"""
+💎 Premium Plans
 
-⚡ 1 Day - $1.99
-🔥 1 Week - $5.99
-💎 1 Month - $14.99
-👑 Lifetime - $49.99
+⚡ 1 Day $1.99
+🔥 1 Week $5.99
+💎 1 Month $14.99
+👑 Lifetime $49.99
 
-Crypto only.
+
+Crypto:
 
 BTC:
-%s
+{BTC}
 
 USDT:
-%s
-"""%(BTC,USDT)
+{USDT}
+"""
         )
 
 
     elif q.data=="account":
 
-        user(q.from_user.id)
+        add_user(q.from_user.id)
 
         cur.execute(
             "SELECT * FROM users WHERE id=?",
             (q.from_user.id,)
         )
 
-        u=cur.fetchone()
+        u = cur.fetchone()
 
 
         await q.edit_message_text(
@@ -364,11 +393,16 @@ async def givepremium(update,context):
     days=context.args[1]
 
 
-    expire="LIFETIME" if days=="lifetime" else (
+    expire = (
+        "LIFETIME"
+        if days=="lifetime"
+        else
+        (
         datetime.datetime.now()
         +
         datetime.timedelta(days=int(days))
-    ).isoformat()
+        ).isoformat()
+    )
 
 
     cur.execute(
@@ -387,27 +421,12 @@ async def givepremium(update,context):
 
 async def menu(app):
 
-    try:
-
-        await app.bot.set_my_commands(
-            [
-                BotCommand("start","Start"),
-                BotCommand("lookup","Lookup")
-            ]
-        )
-
-        await app.bot.set_my_commands(
-            [
-                BotCommand("createkey","Create key"),
-                BotCommand("givepremium","Give premium")
-            ],
-            scope=BotCommandScopeChat(
-                chat_id=ADMIN
-            )
-        )
-
-    except Exception as e:
-        print(e)
+    await app.bot.set_my_commands(
+        [
+            BotCommand("start","Start"),
+            BotCommand("lookup","Lookup")
+        ]
+    )
 
 
 
@@ -416,26 +435,31 @@ async def menu(app):
 app = Application.builder().token(TOKEN).build()
 
 
-app.add_handler(CommandHandler("start",start))
-app.add_handler(CommandHandler("createkey",createkey))
-app.add_handler(CommandHandler("givepremium",givepremium))
+app.add_handler(
+CommandHandler("start",start)
+)
 
+app.add_handler(
+CommandHandler("createkey",createkey)
+)
+
+app.add_handler(
+CommandHandler("givepremium",givepremium)
+)
 
 app.add_handler(
 MessageHandler(
 filters.TEXT & ~filters.COMMAND,
-zip_text
+text_zip
 )
 )
-
 
 app.add_handler(
 MessageHandler(
 filters.PHOTO,
-photo
+image
 )
 )
-
 
 app.add_handler(
 CallbackQueryHandler(buttons)
