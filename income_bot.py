@@ -1,5 +1,5 @@
 import os, re, sqlite3, secrets, datetime, aiohttp,easyocr
-,asyncio
+
 from telegram import (
     Update,
     InlineKeyboardButton,
