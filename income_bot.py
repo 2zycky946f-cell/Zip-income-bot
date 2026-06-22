@@ -40,9 +40,9 @@ def get_income(zip_code):
 
 
         response = requests.get(
-            url,
-            timeout=15
-        )
+    url,
+    timeout=30
+)
 
 
         print("CENSUS RESPONSE:")
