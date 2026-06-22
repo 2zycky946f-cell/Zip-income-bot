@@ -115,82 +115,96 @@ def make_message(zips):
 
 
 
-def read_zips(image_path):
+def def read_zips(image_path):
 
     try:
-        ...
 
-    url = "https://api.ocr.space/parse/image"
+        url = "https://api.ocr.space/parse/image"
 
-    with open(image_path, "rb") as image:
+        with open(image_path, "rb") as image:
 
-        response = requests.post(
-            url,
-            files={"filename": image},
-            data={
-                "apikey": "helloworld",
-                "language": "eng",
-                "OCREngine": 2,
-                "scale": True
-            },
-            timeout=30
+            response = requests.post(
+                url,
+                files={"filename": image},
+                data={
+                    "apikey": "helloworld",
+                    "language": "eng",
+                    "OCREngine": 2,
+                    "scale": True
+                },
+                timeout=30
+            )
+
+        print("OCR RAW RESPONSE:")
+        print(response.text)
+
+        data = response.json()
+
+        text = ""
+
+        for item in data.get("ParsedResults", []):
+
+            text += item.get("ParsedText", "") + "\n"
+
+        print("OCR TEXT:")
+        print(repr(text))
+
+        found = re.findall(r"\d{5}", text)
+
+        if not found:
+
+            found = re.findall(r"\d+", text)
+
+            found = [
+                x.zfill(5)
+                for x in found
+                if len(x) >= 4
+            ]
+
+        print("ZIPS FOUND:")
+        print(found)
+
+        return list(dict.fromkeys(found))
+
+    except Exception as e:
+
+        print("OCR ERROR:")
+        print(str(e))
+
+        return []
+
+
+async def text_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    text = update.message.text
+
+    zips = re.findall(
+        r"\d{5}",
+        text
+    )
+
+    if not zips:
+
+        await update.message.reply_text(
+            "No ZIP codes found."
         )
 
-    print("OCR RAW RESPONSE:")
-    print(response.text)
-
-    data = response.json()
-
-    text = ""
-
-    for item in data.get("ParsedResults", []):
-
-        text += item.get("ParsedText", "") + "\n"
-
-    print("OCR TEXT:")
-    print(repr(text))
-
-    found = re.findall(r"\d{5}", text)
-
-    if not found:
-
-        found = re.findall(r"\d+", text)
-
-        found = [
-            x.zfill(5)
-            for x in found
-            if len(x) >= 4
-        ]
-
-    print("ZIPS FOUND:")
-    print(found)
-
-    return list(dict.fromkeys(found))
-
-except Exception as e:
-
-    print("OCR ERROR:")
-    print(str(e))
-
-    return []
-
-
+        return
 
     zips = list(dict.fromkeys(zips))
-
 
     await update.message.reply_text(
         "Checking incomes..."
     )
 
-
     message = make_message(zips)
-
 
     await update.message.reply_text(
         message
     )
-
 
 
 async def photo_handler(
@@ -202,27 +216,21 @@ async def photo_handler(
         "Reading image..."
     )
 
-
     photo = update.message.photo[-1]
-
 
     file = await context.bot.get_file(
         photo.file_id
     )
 
-
     image_path = "/tmp/photo.jpg"
-
 
     await file.download_to_drive(
         image_path
     )
 
-
     zips = read_zips(
         image_path
     )
-
 
     if not zips:
 
@@ -232,11 +240,9 @@ async def photo_handler(
 
         return
 
-
     message = make_message(
         zips
     )
-
 
     await update.message.reply_text(
         message
