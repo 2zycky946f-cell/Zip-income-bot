@@ -115,7 +115,10 @@ def make_message(zips):
 
 
 
-def try:
+def read_zips(image_path):
+
+    try:
+        ...
 
     url = "https://api.ocr.space/parse/image"
 
