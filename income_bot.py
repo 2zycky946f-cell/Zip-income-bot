@@ -75,7 +75,11 @@ db.commit()
 
 print("Loading OCR...")
 
-ocr = easyocr.Reader(["en"])
+ocr = easyocr.Reader(
+    ["en"],
+    gpu=False,
+    verbose=False
+)
 
 print("OCR Ready")
 
