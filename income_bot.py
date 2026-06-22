@@ -2,9 +2,6 @@ import os
 import re
 import requests
 import pandas as pd
-import pytesseract
-
-from PIL import Image
 
 from telegram import Update
 from telegram.ext import (
