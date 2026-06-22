@@ -19,16 +19,15 @@ CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "ZipIncome Bot\n\n"
-        "Send:\n"
-        "- ZIP codes as text\n"
-        "- A picture with ZIP codes\n"
-        "- CSV/XLSX files"
+        "Send ZIP codes as text, a picture, or upload CSV/XLSX."
     )
 
 
 def get_income(zip_code):
 
     try:
+        zip_code = str(zip_code).strip().zfill(5)
+
         url = (
             "https://api.census.gov/data/2023/acs/acs5"
             f"?get=B19013_001E"
@@ -37,15 +36,20 @@ def get_income(zip_code):
         )
 
         response = requests.get(url, timeout=15)
+
+        print("CENSUS RESPONSE:")
+        print(response.text)
+
         data = response.json()
 
         if len(data) > 1:
             return int(data[1][0])
 
-    except Exception:
-        return None
+    except Exception as e:
+        print("INCOME ERROR:")
+        print(e)
 
-    return None
+    return "Not found"
 
 
 def make_excel(zips):
@@ -53,6 +57,7 @@ def make_excel(zips):
     results = []
 
     for z in zips:
+
         results.append(
             {
                 "ZIP": z,
@@ -67,6 +72,7 @@ def make_excel(zips):
     df.to_excel(path, index=False)
 
     return path
+
 
 
 def read_zips(image_path):
@@ -108,9 +114,11 @@ def read_zips(image_path):
 
     except Exception as e:
 
+        print("OCR ERROR:")
         print(e)
 
         return []
+
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,9 +130,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not zips:
 
         await update.message.reply_text(
-            "No ZIP codes found.\nExample: 93618 93722 90210"
+            "No ZIP codes found."
         )
-
         return
 
 
@@ -133,7 +140,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Processing..."
     )
-
 
     output = make_excel(zips)
 
@@ -144,6 +150,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             document=f,
             filename="zip_income_results.xlsx"
         )
+
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,7 +166,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo.file_id
     )
 
-
     image_path = "/tmp/photo.jpg"
 
     await file.download_to_drive(image_path)
@@ -171,7 +177,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not zips:
 
         await update.message.reply_text(
-            "No ZIP codes found. Try a clearer picture."
+            "No ZIP codes found."
         )
 
         return
@@ -186,54 +192,60 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             document=f,
             filename="zip_income_results.xlsx"
         )
+
 
 
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     document = update.message.document
 
-    file_name = document.file_name.lower()
+    name = document.file_name.lower()
 
 
-    if not (
-        file_name.endswith(".csv")
-        or file_name.endswith(".xlsx")
-    ):
+    if not (name.endswith(".csv") or name.endswith(".xlsx")):
 
         await update.message.reply_text(
-            "Upload CSV or XLSX files only."
+            "Upload CSV or XLSX only."
         )
-
         return
 
 
-    telegram_file = await context.bot.get_file(
+    file = await context.bot.get_file(
         document.file_id
     )
 
 
     path = f"/tmp/{document.file_name}"
 
-    await telegram_file.download_to_drive(path)
+
+    await file.download_to_drive(path)
 
 
-    if file_name.endswith(".csv"):
+    if name.endswith(".csv"):
+
         df = pd.read_csv(path)
 
     else:
+
         df = pd.read_excel(path)
 
 
     if "ZIP" not in df.columns:
 
         await update.message.reply_text(
-            "File needs a ZIP column."
+            "Your file needs a ZIP column."
         )
-
         return
 
 
-    zips = df["ZIP"].astype(str).tolist()
+    zips = (
+        df["ZIP"]
+        .astype(str)
+        .str.extract(r"(\d{5})")[0]
+        .dropna()
+        .tolist()
+    )
+
 
     output = make_excel(zips)
 
@@ -246,30 +258,22 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+
 app = Application.builder().token(BOT_TOKEN).build()
 
 
 app.add_handler(
-    CommandHandler(
-        "start",
-        start
-    )
+    CommandHandler("start", start)
 )
 
 
 app.add_handler(
-    MessageHandler(
-        filters.PHOTO,
-        photo_handler
-    )
+    MessageHandler(filters.PHOTO, photo_handler)
 )
 
 
 app.add_handler(
-    MessageHandler(
-        filters.Document.ALL,
-        file_handler
-    )
+    MessageHandler(filters.Document.ALL, file_handler)
 )
 
 
