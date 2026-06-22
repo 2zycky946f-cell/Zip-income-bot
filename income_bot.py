@@ -231,10 +231,12 @@ async def image(update,context):
     try:
         file = await update.message.photo[-1].get_file()
 
-        await file.download_to_drive("img.jpg")
+        filename = f"img_{update.effective_user.id}.jpg"
+
+        await file.download_to_drive(filename)
 
 
-        results = ocr.readtext("img.jpg")
+        results = ocr.readtext(filename)
 
         text = " ".join(
             item[1]
@@ -252,13 +254,15 @@ async def image(update,context):
 
         if not zips:
             await update.message.reply_text(
-                "❌ No ZIP found\n\nOCR saw:\n" + text[:200]
+                "❌ No ZIP found"
             )
             return
 
 
         await update.message.reply_text(
-            f"✅ Found ZIP:\n{zips}\n\n🔍 Searching..."
+            "✅ Found:\n" + 
+            "\n".join(zips) +
+            "\n\n🔍 Searching..."
         )
 
 
@@ -321,7 +325,7 @@ f"""
 👑 Lifetime - $49.99
 
 
-₿ Bitcoin Payment Only:
+₿ Bitcoin Only:
 
 {BTC}
 
@@ -342,6 +346,12 @@ After payment type:
         )
 
         u = cur.fetchone()
+
+        if not u:
+            await q.edit_message_text(
+                "❌ Account error"
+            )
+            return
 
 
         await q.edit_message_text(
