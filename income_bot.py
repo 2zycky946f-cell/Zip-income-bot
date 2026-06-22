@@ -109,7 +109,7 @@ async def lookup_zip(z):
 
         url = (
         "https://api.census.gov/data/2023/acs/acs5/profile?"
-        "get=NAME,DP03_0062PE,DP05_0001E&"
+        "get=NAME,DP03_0062E,DP05_0001E&"
         f"for=zip%20code%20tabulation%20area:{z}"
         f"&key={CENSUS_KEY}"
         )
