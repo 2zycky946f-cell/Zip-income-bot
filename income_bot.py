@@ -1,5 +1,5 @@
-import os, re, sqlite3, secrets, datetime, aiohttp, easyocr
-
+import os, re, sqlite3, secrets, datetime, aiohttp,easyocr
+,asyncio
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -236,7 +236,11 @@ async def image(update,context):
         await file.download_to_drive(filename)
 
 
-        results = ocr.readtext(filename)
+        results = await asyncio.to_thread(
+            ocr.readtext,
+            filename
+        )
+
 
         text = " ".join(
             item[1]
@@ -254,15 +258,13 @@ async def image(update,context):
 
         if not zips:
             await update.message.reply_text(
-                "❌ No ZIP found"
+                "❌ No ZIP found\nOCR saw:\n" + text[:200]
             )
             return
 
 
         await update.message.reply_text(
-            "✅ Found:\n" + 
-            "\n".join(zips) +
-            "\n\n🔍 Searching..."
+            f"✅ Found:\n{zips}\n\n🔍 Searching..."
         )
 
 
@@ -284,7 +286,7 @@ async def image(update,context):
         print("PHOTO ERROR:", e)
 
         await update.message.reply_text(
-            "❌ Image failed"
+            "❌ Image error"
         )
 
 
