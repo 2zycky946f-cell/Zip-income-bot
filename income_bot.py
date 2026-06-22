@@ -69,10 +69,11 @@ def read_zips(image_path):
 
     print("OCR TEXT:")
     print(text)
-print("FOUND:")
-print(re.findall(r"\d{3,6}", text))
-    # catches normal ZIPs and ZIPs with spaces/dashes
+
     found = re.findall(r"\d{5}", text)
+
+    print("FOUND:")
+    print(found)
 
     return list(dict.fromkeys(found))
 
