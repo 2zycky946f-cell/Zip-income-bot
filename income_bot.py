@@ -6,7 +6,9 @@ import secrets
 from telegram import (
     Update,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+    BotCommand,
+    BotCommandScopeChat
 )
 
 from telegram.ext import (
@@ -19,7 +21,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-ADMIN_ID = 123456789  # PUT YOUR TELEGRAM ID HERE
+ADMIN_ID = 123456789  # CHANGE THIS TO YOUR TELEGRAM ID
 
 
 # ---------------- DATABASE ---------------- #
@@ -56,8 +58,44 @@ db.commit()
 
 
 
-# ---------------- USER FUNCTIONS ---------------- #
+# ---------------- COMMAND MENU ---------------- #
 
+async def set_commands(app):
+
+    user_commands = [
+        BotCommand("start", "Start bot"),
+        BotCommand("redeem", "Redeem premium key"),
+        BotCommand("lookup", "Run lookup"),
+    ]
+
+
+    admin_commands = [
+        BotCommand("start", "Start bot"),
+        BotCommand("redeem", "Redeem premium key"),
+        BotCommand("lookup", "Run lookup"),
+        BotCommand("createkey", "Create premium key"),
+        BotCommand("stats", "View bot stats"),
+        BotCommand("ban", "Ban user"),
+    ]
+
+
+    # Everyone gets normal commands
+    await app.bot.set_my_commands(
+        user_commands
+    )
+
+
+    # Only you get admin commands
+    await app.bot.set_my_commands(
+        admin_commands,
+        scope=BotCommandScopeChat(
+            chat_id=ADMIN_ID
+        )
+    )
+
+
+
+# ---------------- USER FUNCTIONS ---------------- #
 
 def create_user(user_id):
 
@@ -97,7 +135,6 @@ def is_premium(user_id):
     if not user[2]:
         return False
 
-
     return (
         datetime.datetime.fromisoformat(user[2])
         >
@@ -108,46 +145,34 @@ def is_premium(user_id):
 
 # ---------------- START ---------------- #
 
-
 async def start(update: Update, context):
 
     create_user(update.effective_user.id)
 
-
     buttons = [
-
         [
             InlineKeyboardButton(
                 "🔑 Redeem Key",
                 callback_data="redeem"
             )
         ],
-
         [
             InlineKeyboardButton(
                 "👤 Account",
                 callback_data="account"
             )
         ],
-
         [
             InlineKeyboardButton(
                 "💎 Premium",
                 callback_data="premium"
             )
         ]
-
     ]
 
 
     await update.message.reply_text(
-        """
-🔥 Premium Income Bot
-
-Welcome!
-
-Use the buttons below:
-""",
+        "🔥 Premium Income Bot\n\nChoose:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
@@ -155,11 +180,9 @@ Use the buttons below:
 
 # ---------------- BUTTONS ---------------- #
 
-
 async def buttons(update, context):
 
     q = update.callback_query
-
     await q.answer()
 
 
@@ -189,40 +212,25 @@ Premium:
     elif q.data == "redeem":
 
         await q.edit_message_text(
-"""
-🔑 Redeem Key
-
-Type:
-
-/redeem YOUR_KEY
-"""
+            "🔑 Type:\n/redeem YOUR_KEY"
         )
 
 
     elif q.data == "premium":
 
         await q.edit_message_text(
-"""
-💎 Premium Benefits
-
-✅ More searches
-✅ Faster access
-✅ Premium tools
-✅ Priority support
-"""
+            "💎 Premium gives you full access."
         )
 
 
 
 # ---------------- REDEEM ---------------- #
 
-
 async def redeem(update, context):
 
     if not context.args:
-
         await update.message.reply_text(
-            "Use:\n/redeem KEY"
+            "Use /redeem KEY"
         )
         return
 
@@ -235,7 +243,6 @@ async def redeem(update, context):
         (key,)
     )
 
-
     data = cur.fetchone()
 
 
@@ -247,7 +254,6 @@ async def redeem(update, context):
         return
 
 
-
     if data[2]:
 
         await update.message.reply_text(
@@ -256,13 +262,11 @@ async def redeem(update, context):
         return
 
 
-
     expire = (
         datetime.datetime.now()
         +
         datetime.timedelta(days=data[1])
     )
-
 
 
     cur.execute(
@@ -288,60 +292,13 @@ update.effective_user.id
     db.commit()
 
 
-
     await update.message.reply_text(
         "🔥 Premium activated!"
     )
 
 
 
-# ---------------- PREMIUM COMMAND ---------------- #
-
-
-async def lookup(update, context):
-
-    if not is_premium(update.effective_user.id):
-
-        await update.message.reply_text(
-            "❌ Premium only"
-        )
-
-        return
-
-
-    user = get_user(update.effective_user.id)
-
-
-    cur.execute(
-"""
-UPDATE users
-SET searches=searches+1
-WHERE user_id=?
-""",
-(update.effective_user.id,)
-)
-
-
-    db.commit()
-
-
-
-    await update.message.reply_text(
-f"""
-🔍 Search Complete
-
-Premium user:
-YES
-
-Search count:
-{user[3]+1}
-"""
-    )
-
-
-
 # ---------------- ADMIN ---------------- #
-
 
 async def createkey(update, context):
 
@@ -351,7 +308,6 @@ async def createkey(update, context):
 
     days = int(context.args[0])
 
-
     key = secrets.token_hex(10)
 
 
@@ -360,48 +316,18 @@ async def createkey(update, context):
         (key,days)
     )
 
-
     db.commit()
-
 
 
     await update.message.reply_text(
 f"""
-🔑 New Premium Key
+🔑 KEY CREATED
 
 {key}
 
 Days:
 {days}
 """
-    )
-
-
-
-async def ban(update, context):
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-
-    uid = int(context.args[0])
-
-
-    cur.execute(
-"""
-UPDATE users
-SET banned=1
-WHERE user_id=?
-""",
-(uid,)
-)
-
-
-    db.commit()
-
-
-    await update.message.reply_text(
-        "User banned"
     )
 
 
@@ -428,7 +354,7 @@ async def stats(update, context):
 
     await update.message.reply_text(
 f"""
-📊 Bot Stats
+📊 Stats
 
 Users:
 {users}
@@ -442,21 +368,24 @@ Keys:
 
 # ---------------- RUN ---------------- #
 
-
 app = Application.builder().token(BOT_TOKEN).build()
 
 
-app.add_handler(CommandHandler("start", start))
+app.add_handler(
+    CommandHandler("start", start)
+)
 
-app.add_handler(CommandHandler("redeem", redeem))
+app.add_handler(
+    CommandHandler("redeem", redeem)
+)
 
-app.add_handler(CommandHandler("lookup", lookup))
+app.add_handler(
+    CommandHandler("createkey", createkey)
+)
 
-app.add_handler(CommandHandler("createkey", createkey))
-
-app.add_handler(CommandHandler("ban", ban))
-
-app.add_handler(CommandHandler("stats", stats))
+app.add_handler(
+    CommandHandler("stats", stats)
+)
 
 
 app.add_handler(
@@ -464,7 +393,9 @@ app.add_handler(
 )
 
 
+app.post_init = set_commands
 
-print("🔥 Premium Bot Running")
+
+print("🔥 Premium bot running")
 
 app.run_polling()
