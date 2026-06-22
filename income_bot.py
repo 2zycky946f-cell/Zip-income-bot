@@ -3,597 +3,163 @@ import re
 import sqlite3
 import secrets
 import datetime
+import asyncio
 import aiohttp
 import easyocr
-import asyncio
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    BotCommand,
-    BotCommandScopeChat
-)
-
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters
-)
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 CENSUS_KEY = os.getenv("CENSUS_API_KEY")
 
-ADMIN = 8834288282
-
-BTC = "bc1qeyfhgadc52lzecacafgh9n7hy84y2gfhd76evc"
-
+ADMIN_ID = 8834288282
+BTC_ADDRESS = "bc1qeyfhgadc52lzecacafgh9n7hy84y2gfhd76evc"
 
 # ---------- DATABASE ----------
 
-db = sqlite3.connect(
-    "bot.db",
-    check_same_thread=False
-)
-
+db = sqlite3.connect("bot.db", check_same_thread=False)
 cur = db.cursor()
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS users(
-id INTEGER PRIMARY KEY,
-plan TEXT DEFAULT 'FREE',
-expire TEXT,
-searches INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS keys(
-key TEXT PRIMARY KEY,
-days TEXT,
-used INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS cache(
-zip TEXT PRIMARY KEY,
-income TEXT,
-population TEXT
-)
-""")
-
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS payments(
-user_id INTEGER,
-plan TEXT,
-status TEXT DEFAULT 'pending'
-)
-""")
-
+cur.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, plan TEXT DEFAULT 'FREE', expire TEXT, searches INTEGER DEFAULT 0)")
+cur.execute("CREATE TABLE IF NOT EXISTS cache(zip TEXT PRIMARY KEY, income TEXT, population TEXT)")
 db.commit()
-
 
 # ---------- OCR ----------
 
 print("Loading OCR...")
-
-ocr = easyocr.Reader(
-    ["en"],
-    gpu=False,
-    verbose=False
-)
-
+ocr = easyocr.Reader(["en"], gpu=False, verbose=False)
 print("OCR Ready")
 
-
-
-# ---------- HELPERS ----------
-
 def add_user(uid):
-    cur.execute(
-        "INSERT OR IGNORE INTO users(id) VALUES(?)",
-        (uid,)
-    )
+    cur.execute("INSERT OR IGNORE INTO users(id) VALUES(?)", (uid,))
     db.commit()
 
+async def lookup_zip(zip_code):
+    cur.execute("SELECT income,population FROM cache WHERE zip=?", (zip_code,))
+    row = cur.fetchone()
 
-
-async def lookup_zip(z):
-
-    cur.execute(
-        "SELECT * FROM cache WHERE zip=?",
-        (z,)
-    )
-
-    old = cur.fetchone()
-
-    if old:
-        return f"⚡ {z}\nIncome: {old[1]}\nPopulation: {old[2]}"
-
+    if row:
+        return f"ð {zip_code}\nIncome: {row[0]}\nPopulation: {row[1]}"
 
     try:
-
         url = (
-        "https://api.census.gov/data/2023/acs/acs5/profile?"
-        "get=NAME,DP03_0062E,DP05_0001E&"
-        f"for=zip%20code%20tabulation%20area:{z}"
-        f"&key={CENSUS_KEY}"
+            f"https://api.census.gov/data/2023/acs/acs5/profile?"
+            f"get=NAME,DP03_0062E,DP05_0001E&for=zip%20code%20tabulation%20area:{zip_code}&key={CENSUS_KEY}"
         )
 
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=20) as resp:
+                data = await resp.json()
 
-        async with aiohttp.ClientSession() as s:
-
-            async with s.get(
-                url,
-                timeout=15
-            ) as r:
-
-                data = await r.json()
-
+        if len(data) < 2:
+            return f"â {zip_code} not found"
 
         income = data[1][1]
-        pop = data[1][2]
+        population = data[1][2]
 
-
-        cur.execute(
-            "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
-            (z,income,pop)
-        )
-
+        cur.execute("INSERT OR REPLACE INTO cache VALUES(?,?,?)", (zip_code, income, population))
         db.commit()
 
-
-        return f"📊 {z}\nIncome: {income}\nPopulation: {pop}"
-
+        return f"ð {zip_code}\nIncome: {income}\nPopulation: {population}"
 
     except Exception as e:
+        print("CENSUS ERROR:", e)
+        return f"â {zip_code} failed"
 
-        print(e)
-
-        return f"❌ {z} failed"
-
-
-
-# ---------- START ----------
-
-async def start(update,context):
-
+async def start(update: Update, context):
     add_user(update.effective_user.id)
 
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                "🔍 Lookup",
-                callback_data="lookup"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "💎 Premium",
-                callback_data="premium"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👤 Account",
-                callback_data="account"
-            )
-        ]
+    keyboard = [
+        [InlineKeyboardButton("ð Lookup", callback_data="lookup")],
+        [InlineKeyboardButton("ð Premium", callback_data="premium")],
+        [InlineKeyboardButton("ð¤ Account", callback_data="account")]
     ]
 
-
     await update.message.reply_text(
-        "🔥 ZIP Income Bot",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        "ð¥ ZIP Income Bot",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
-
-# ---------- TEXT ZIP ----------
-
-async def text_zip(update,context):
-
-    zips = re.findall(
-        r"\b\d{5}\b",
-        update.message.text
-    )
+async def text_zip(update: Update, context):
+    zips = list(set(re.findall(r"\b\d{5}\b", update.message.text)))
 
     if not zips:
         return
 
+    await update.message.reply_text("ð Searching...")
 
-    await update.message.reply_text(
-        "🔍 Searching..."
-    )
+    results = [await lookup_zip(z) for z in zips]
 
+    await update.message.reply_text("\n\n".join(results))
 
-    result=[]
+async def image(update: Update, context):
+    await update.message.reply_text("ð· Reading image...")
 
-    for z in zips:
-        result.append(
-            await lookup_zip(z)
-        )
-
-
-    await update.message.reply_text(
-        "\n\n".join(result)
-    )
-
-
-
-# ---------- IMAGE ----------
-
-async def image(update,context):
-
-    await update.message.reply_text(
-        "📷 Reading image..."
-    )
+    filename = f"img_{update.effective_user.id}.jpg"
 
     try:
         file = await update.message.photo[-1].get_file()
-
-        filename = f"img_{update.effective_user.id}.jpg"
-
         await file.download_to_drive(filename)
 
-
-        results = await asyncio.to_thread(
-            ocr.readtext,
-            filename
+        results = await asyncio.wait_for(
+            asyncio.to_thread(ocr.readtext, filename),
+            timeout=30
         )
 
+        text = " ".join(x[1] for x in results)
+        print("OCR:", text)
 
-        text = " ".join(
-            item[1]
-            for item in results
-        )
-
-        print("OCR TEXT:", text)
-
-
-        zips = re.findall(
-            r"\d{5}",
-            text
-        )
-
+        zips = list(set(re.findall(r"\b\d{5}\b", text)))
 
         if not zips:
-            await update.message.reply_text(
-                "❌ No ZIP found\nOCR saw:\n" + text[:200]
-            )
+            await update.message.reply_text("â No ZIP codes found.")
             return
 
+        output = [await lookup_zip(z) for z in zips]
 
-        await update.message.reply_text(
-            f"✅ Found:\n{zips}\n\n🔍 Searching..."
-        )
+        await update.message.reply_text("\n\n".join(output))
 
-
-        output=[]
-
-        for z in zips:
-            output.append(
-                await lookup_zip(z)
-            )
-
-
-        await update.message.reply_text(
-            "\n\n".join(output)
-        )
-
-
+    except asyncio.TimeoutError:
+        await update.message.reply_text("â OCR timed out.")
     except Exception as e:
-
         print("PHOTO ERROR:", e)
+        await update.message.reply_text("â Image error.")
+    finally:
+        try:
+            os.remove(filename)
+        except:
+            pass
 
-        await update.message.reply_text(
-            "❌ Image error"
-        )
-
-
-# ---------- BUTTONS ----------
-
-async def buttons(update,context):
-
+async def buttons(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-
-    if q.data=="lookup":
-
-        await q.edit_message_text(
-"""
-🔍 Send ZIP codes
-
-Example:
-
-93725
-93291
-93654
-
-or upload screenshot 📷
-"""
-        )
-
-
-    elif q.data=="premium":
+    if q.data == "lookup":
+        await q.edit_message_text("Send ZIP codes or upload a screenshot.")
+    elif q.data == "premium":
+        await q.edit_message_text(f"ð Premium\n\nBitcoin:\n{BTC_ADDRESS}")
+    elif q.data == "account":
+        cur.execute("SELECT * FROM users WHERE id=?", (q.from_user.id,))
+        user = cur.fetchone()
 
         await q.edit_message_text(
-f"""
-💎 Premium Plans
-
-⚡ 1 Day Pass - $1.99
-🔥 1 Week Pass - $5.99
-💎 1 Month Pass - $14.99
-👑 Lifetime - $49.99
-
-
-₿ Bitcoin Only:
-
-{BTC}
-
-
-After payment type:
-/paid
-"""
+            f"Plan: {user[1]}\nSearches: {user[3]}\nExpires: {user[2] or 'Never'}"
         )
 
-
-    elif q.data=="account":
-
-        add_user(q.from_user.id)
-
-        cur.execute(
-            "SELECT * FROM users WHERE id=?",
-            (q.from_user.id,)
-        )
-
-        u = cur.fetchone()
-
-        if not u:
-            await q.edit_message_text(
-                "❌ Account error"
-            )
-            return
-
-
-        await q.edit_message_text(
-f"""
-👤 Account
-
-Plan:
-{u[1]}
-
-Searches:
-{u[3]}
-
-Expires:
-{u[2] or "Never"}
-"""
-        )
-
-
-
-# ---------- PAYMENT ----------
-
-async def paid(update,context):
-
-    await update.message.reply_text(
-"""
-✅ Payment request sent.
-
-Admin will verify your Bitcoin payment and send your key.
-"""
-    )
-
-
-
-# ---------- ADMIN ----------
-
-async def approve(update,context):
-
-    if update.effective_user.id != ADMIN:
-        return
-
-
-    if len(context.args) < 2:
-
-        await update.message.reply_text(
-            "Use: /approve USER_ID DAYS"
-        )
-
-        return
-
-
-    user_id = int(context.args[0])
-    plan = context.args[1]
-
-
-    key = secrets.token_hex(8)
-
-
-    cur.execute(
-        "INSERT INTO keys VALUES(?,?,0)",
-        (key,plan)
-    )
-
-
-    expire = (
-        "LIFETIME"
-        if plan=="lifetime"
-        else
-        (
-        datetime.datetime.now()
-        +
-        datetime.timedelta(days=int(plan))
-        ).isoformat()
-    )
-
-
-    cur.execute(
-        "UPDATE users SET plan='PREMIUM',expire=? WHERE id=?",
-        (expire,user_id)
-    )
-
-    db.commit()
-
-
-    await context.bot.send_message(
-        chat_id=user_id,
-        text=f"""
-🔥 Payment Confirmed!
-
-🔑 Key:
-{key}
-
-Plan:
-{plan}
-"""
-    )
-
-
-    await update.message.reply_text(
-        "✅ Approved"
-    )
-
-
-
-async def createkey(update,context):
-
-    if update.effective_user.id != ADMIN:
-        return
-
-
-    if not context.args:
-        await update.message.reply_text(
-            "Use: /createkey DAYS"
-        )
-        return
-
-
-    days=context.args[0]
-
-    key=secrets.token_hex(8)
-
-
-    cur.execute(
-        "INSERT INTO keys VALUES(?,?,0)",
-        (key,days)
-    )
-
-    db.commit()
-
-
-    await update.message.reply_text(
-        f"🔑 {key}\nPlan: {days}"
-    )
-
-
-
-async def givepremium(update,context):
-
-    if update.effective_user.id != ADMIN:
-        return
-
-
-    uid=int(context.args[0])
-    days=context.args[1]
-
-
-    expire = (
-        "LIFETIME"
-        if days=="lifetime"
-        else
-        (
-        datetime.datetime.now()
-        +
-        datetime.timedelta(days=int(days))
-        ).isoformat()
-    )
-
-
-    cur.execute(
-        "UPDATE users SET plan='PREMIUM',expire=? WHERE id=?",
-        (expire,uid)
-    )
-
-    db.commit()
-
-
-    await update.message.reply_text(
-        "✅ Premium added"
-    )
-
-
-
-async def menu(app):
-
-    await app.bot.set_my_commands(
-        [
-            BotCommand("start","Start"),
-            BotCommand("paid","Payment sent"),
-            BotCommand("lookup","Lookup")
-        ]
-    )
-
-
-
-# ---------- RUN ----------
+async def set_commands(app):
+    await app.bot.set_my_commands([
+        BotCommand("start", "Start")
+    ])
 
 app = Application.builder().token(TOKEN).build()
 
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_zip))
+app.add_handler(MessageHandler(filters.PHOTO, image))
+app.add_handler(CallbackQueryHandler(buttons))
 
-app.add_handler(
-CommandHandler("start",start)
-)
+app.post_init = set_commands
 
-app.add_handler(
-CommandHandler("createkey",createkey)
-)
-
-app.add_handler(
-CommandHandler("givepremium",givepremium)
-)
-
-app.add_handler(
-CommandHandler("approve",approve)
-)
-
-app.add_handler(
-CommandHandler("paid",paid)
-)
-
-
-app.add_handler(
-MessageHandler(
-filters.TEXT & ~filters.COMMAND,
-text_zip
-)
-)
-
-
-app.add_handler(
-MessageHandler(
-filters.PHOTO,
-image
-)
-)
-
-
-app.add_handler(
-CallbackQueryHandler(buttons)
-)
-
-
-app.post_init = menu
-
-
-print("🔥 Bot running")
-
+print("ð¥ Bot running")
 app.run_polling()
