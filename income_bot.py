@@ -231,13 +231,13 @@ async def image(update: Update, context):
 
         print("ZIPS FOUND:", zips)
 
-        if not zips:
+            if not zips:
 
-            await update.message.reply_text(
-                "❌ No ZIP codes found."
-            )
+                await update.message.reply_text(
+                    "❌ No ZIP codes found."
+                )
 
-            return
+                return
 
             
             
