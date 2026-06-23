@@ -292,29 +292,42 @@ async def buttons(update: Update, context):
     await q.answer()
 
     if q.data == "lookup":
-        await q.edit_message_text(
-            "Send ZIP codes or upload a screenshot."
-        )
+    await q.edit_message_text(
+        "📸 Send ZIP codes or upload a screenshot\n\n"
+        "Examples:\n"
+        "93618\n"
+        "93646\n"
+        "93722\n\n"
+        "You can send multiple ZIP codes at once."
+    )
 
-    elif q.data == "premium":
-        await q.edit_message_text(
-            f"ð Premium\n\nBitcoin:\n{BTC_ADDRESS}"
-        )
+elif q.data == "premium":
+    await q.edit_message_text(
+        "💎 PREMIUM PLANS 💎\n\n"
+        "💎 1 Day — $1\n"
+        "💎 1 Week — $5\n"
+        "💎 1 Month — $20\n"
+        "💎 Lifetime — $30\n\n"
+        "₿ Bitcoin Payment Address:\n"
+        f"{BTC_ADDRESS}\n\n"
+        "📩 After payment, send proof of payment to receive your activation code."
+    )
 
-    elif q.data == "account":
+elif q.data == "account":
 
-        cur.execute(
-            "SELECT * FROM users WHERE id=?",
-            (q.from_user.id,)
-        )
+    cur.execute(
+        "SELECT * FROM users WHERE id=?",
+        (q.from_user.id,)
+    )
 
-        user = cur.fetchone()
+    user = cur.fetchone()
 
-        await q.edit_message_text(
-            f"Plan: {user[1]}\n"
-            f"Searches: {user[3]}\n"
-            f"Expires: {user[2] or 'Never'}"
-        )
+    await q.edit_message_text(
+        "👤 ACCOUNT\n\n"
+        f"⭐ Plan: {user[1]}\n"
+        f"🔎 Searches: {user[3]}\n"
+        f"📅 Expires: {user[2] or 'Never'}"
+    )
 
 async def set_commands(app):
     await app.bot.set_my_commands([
