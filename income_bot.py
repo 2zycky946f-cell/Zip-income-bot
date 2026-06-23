@@ -67,7 +67,10 @@ async def start(update: Update, context):
 ]
 
     await update.message.reply_text(
-    "🔥 ZIP Income Bot",
+    "🔥 ZIP Income Bot\n\n"
+    "📊 Discover median incomes by ZIP code.\n"
+    "📸 Upload screenshots or enter ZIP codes manually.\n\n"
+    "Choose an option below:",
     reply_markup=InlineKeyboardMarkup(keyboard)
 )
 
@@ -175,9 +178,9 @@ async def text_zip(update: Update, context):
     )
 async def image(update: Update, context):
 
-    await update.message.reply_text(
-        "📷 Reading screenshot..."
-    )
+    status = await update.message.reply_text(
+    "📸 Reading Screenshot..."
+)
 
     filename = f"img_{update.effective_user.id}.jpg"
 
@@ -213,6 +216,9 @@ async def image(update: Update, context):
         )
 
         print("OCR Finished")
+        await status.edit_text(
+    "🔎 Detecting ZIP Codes..."
+)
         text = " ".join(
             str(x) for x in results
         )
@@ -230,6 +236,9 @@ async def image(update: Update, context):
                 zips.append(match)
 
                 print("ZIPS FOUND:", zips)
+                await status.edit_text(
+    "📊 Looking Up Income Data..."
+)
 
         if not zips:
 
@@ -262,7 +271,9 @@ async def image(update: Update, context):
             reverse=True,
             key=lambda x: x[0]
         )
-
+        await status.edit_text(
+            "✅ Report Ready"
+        )
         await update.message.reply_text(
             "\n\n".join(x[1] for x in output)
         )
