@@ -272,7 +272,9 @@ async def image(update: Update, context):
             reverse=True,
             key=lambda x: x[0]
         )
-        
+        if not output:
+        await status.edit_text("❌ No income results found")
+        return
         highest = output[0][0]
         lowest = output[-1][0]
         average = sum(x[0] for x in output) // len(output)
@@ -358,15 +360,35 @@ async def buttons(update: Update, context):
             )
             user = cur.fetchone()
 
-        await q.edit_message_text(
+                await q.edit_message_text(
             "👤 ACCOUNT\n\n"
             f"⭐ Plan: {user[1]}\n"
             f"🔎 Searches: {user[3]}\n"
-            f"📅 Expires: {user[2] or 'Never'}"
+            f"📅 Expires: {user[2] or 'Never'}",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back", callback_data="home")]
             ]) 
         )
+
+
+    elif q.data == "home":
+
+        keyboard = [
+            [InlineKeyboardButton("🔍 Lookup", callback_data="lookup")],
+            [InlineKeyboardButton("💎 Premium", callback_data="premium")],
+            [InlineKeyboardButton("👤 Account", callback_data="account")]
+        ]
+
+        await q.edit_message_text(
+            "🔥 ZIP Income Bot\n\n"
+            "📊 Discover median incomes by ZIP code.\n"
+            "📸 Upload screenshots or enter ZIP codes manually.\n\n"
+            "Choose an option below:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+
+async def set_commands(app):
     
 async def set_commands(app):
     await app.bot.set_my_commands([
