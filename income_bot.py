@@ -4,6 +4,8 @@ import sqlite3
 import asyncio
 import aiohttp
 import easyocr
+import secrets
+import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
@@ -28,19 +30,18 @@ db = sqlite3.connect("bot.db", check_same_thread=False)
 cur = db.cursor()
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS users(
-    id INTEGER PRIMARY KEY,
-    plan TEXT DEFAULT 'FREE',
-    expire TEXT,
-    searches INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
 CREATE TABLE IF NOT EXISTS cache(
     zip TEXT PRIMARY KEY,
     income TEXT,
     population TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS keys(
+    code TEXT PRIMARY KEY,
+    days INTEGER,
+    used INTEGER DEFAULT 0
 )
 """)
 
@@ -392,6 +393,133 @@ async def buttons(update: Update, context):
             "Choose an option below:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+async def createkey(update: Update, context):
+
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin only")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Use:\n/createkey 1\n/createkey 7\n/createkey 30\n/createkey lifetime"
+        )
+        return
+
+    plan = context.args[0].lower()
+
+    if plan == "1":
+        days = 1
+        name = "1 Day"
+
+    elif plan == "7":
+        days = 7
+        name = "1 Week"
+
+    elif plan == "30":
+        days = 30
+        name = "30 Days"
+
+    elif plan == "lifetime":
+        days = 99999
+        name = "Lifetime"
+
+    else:
+        await update.message.reply_text("❌ Invalid plan")
+        return
+
+
+    code = secrets.token_hex(6).upper()
+
+
+    cur.execute(
+        "INSERT INTO keys(code,days) VALUES(?,?)",
+        (code,days)
+    )
+
+    db.commit()
+
+
+    await update.message.reply_text(
+        f"🔑 KEY CREATED\n\n"
+        f"💎 Plan: {name}\n"
+        f"Code:\n`{code}`",
+        parse_mode="Markdown"
+    )
+
+
+
+async def redeem(update: Update, context):
+
+    uid = update.effective_user.id
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage:\n/redeem CODE"
+        )
+        return
+
+
+    code = context.args[0].upper()
+
+
+    cur.execute(
+        "SELECT days,used FROM keys WHERE code=?",
+        (code,)
+    )
+
+    key = cur.fetchone()
+
+
+    if not key:
+        await update.message.reply_text(
+            "❌ Invalid key"
+        )
+        return
+
+
+    days, used = key
+
+
+    if used == 1:
+        await update.message.reply_text(
+            "❌ Key already used"
+        )
+        return
+
+
+    if days == 99999:
+        plan = "LIFETIME"
+        expire = "Never"
+
+    else:
+        plan = "PREMIUM"
+
+        expire = (
+            datetime.datetime.now()
+            + datetime.timedelta(days=days)
+        ).strftime("%Y-%m-%d")
+
+
+    cur.execute(
+        "UPDATE users SET plan=?, expire=? WHERE id=?",
+        (plan, expire, uid)
+    )
+
+
+    cur.execute(
+        "UPDATE keys SET used=1 WHERE code=?",
+        (code,)
+    )
+
+
+    db.commit()
+
+
+    await update.message.reply_text(
+        "✅ Premium Activated!\n\n"
+        f"💎 Plan: {plan}\n"
+        f"📅 Expires: {expire}"
+    )
     
 async def set_commands(app):
     await app.bot.set_my_commands([
@@ -401,6 +529,10 @@ async def set_commands(app):
 app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+
+app.add_handler(CommandHandler("createkey", createkey))
+app.add_handler(CommandHandler("redeem", redeem))
+
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_zip))
 app.add_handler(MessageHandler(filters.PHOTO, image))
 app.add_handler(CallbackQueryHandler(buttons))
