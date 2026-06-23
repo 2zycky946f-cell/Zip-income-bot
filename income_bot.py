@@ -187,22 +187,32 @@ async def image(update: Update, context):
 
         file = await update.message.photo[-1].get_file()
 
-        await file.download_to_drive(
-            filename
-        )
+        await file.download_to_drive(filename)
 
         print("Photo downloaded")
+
+        from PIL import Image
+
+        img = Image.open(filename)
+
+        print("ORIGINAL SIZE:", img.size)
+
+        img.thumbnail((1000, 1000))
+
+        img.save(filename)
+
+        print("RESIZED SIZE:", img.size)
+
         print("Starting OCR...")
 
         results = await asyncio.to_thread(
             ocr.readtext,
             filename,
             detail=0,
-            paragraph=True
+            paragraph=False
         )
 
         print("OCR Finished")
-
         text = " ".join(
             str(x) for x in results
         )
