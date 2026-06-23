@@ -241,7 +241,7 @@ async def image(update: Update, context):
 
         output = []
 
-        for zip_code in zips:
+                for zip_code in zips:
 
             result = await lookup_zip(zip_code)
 
@@ -257,13 +257,16 @@ async def image(update: Update, context):
             output.append((income, result))
 
 
-            # HIGH → LOW income
-            output.sort(reverse=True, key=lambda x: x[0])
+        # HIGH → LOW income (after ALL ZIPs are collected)
+        output.sort(
+            reverse=True,
+            key=lambda x: x[0]
+        )
 
 
-            await update.message.reply_text(
-                "\n\n".join(x[1] for x in output)
-            )
+        await update.message.reply_text(
+            "\n\n".join(x[1] for x in output)
+        )
 
     except Exception as e:
 
