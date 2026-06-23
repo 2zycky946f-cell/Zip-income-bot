@@ -279,8 +279,8 @@ async def image(update: Update, context):
             key=lambda x: x[0]
         )
         if not output:
-        await status.edit_text("❌ No income results found")
-        return
+            await status.edit_text("❌ No income results found")
+            return
         highest = output[0][0]
         lowest = output[-1][0]
         average = sum(x[0] for x in output) // len(output)
