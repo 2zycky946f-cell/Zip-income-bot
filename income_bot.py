@@ -61,15 +61,15 @@ async def start(update: Update, context):
     add_user(update.effective_user.id)
 
     keyboard = [
-        [InlineKeyboardButton("ð Lookup", callback_data="lookup")],
-        [InlineKeyboardButton("ð Premium", callback_data="premium")],
-        [InlineKeyboardButton("ð¤ Account", callback_data="account")]
-    ]
+    [InlineKeyboardButton("🔍 Lookup", callback_data="lookup")],
+    [InlineKeyboardButton("💎 Premium", callback_data="premium")],
+    [InlineKeyboardButton("👤 Account", callback_data="account")]
+]
 
-    await update.message.reply_text(
-        "ð¥ ZIP Income Bot",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+await update.message.reply_text(
+    "🔥 ZIP Income Bot",
+    reply_markup=InlineKeyboardMarkup(keyboard)
+)
 
 async def lookup_zip(zip_code):
 
