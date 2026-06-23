@@ -8,16 +8,7 @@ import easyocr
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
-print("Loading OCR...")
 
-ocr = easyocr.Reader(
-    ["en"],
-    gpu=False,
-    verbose=False
-)
-
-print("OCR Ready")
-print("OCR OBJECT CREATED")
 
 TOKEN = os.getenv("BOT_TOKEN")
 CENSUS_KEY = os.getenv("CENSUS_API_KEY")
