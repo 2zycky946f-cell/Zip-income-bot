@@ -66,7 +66,7 @@ async def start(update: Update, context):
     [InlineKeyboardButton("👤 Account", callback_data="account")]
 ]
 
-await update.message.reply_text(
+    await update.message.reply_text(
     "🔥 ZIP Income Bot",
     reply_markup=InlineKeyboardMarkup(keyboard)
 )
