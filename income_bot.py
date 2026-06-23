@@ -30,6 +30,15 @@ db = sqlite3.connect("bot.db", check_same_thread=False)
 cur = db.cursor()
 
 cur.execute("""
+CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY,
+    plan TEXT DEFAULT 'FREE',
+    expire TEXT,
+    searches INTEGER DEFAULT 0
+)
+""")
+
+cur.execute("""
 CREATE TABLE IF NOT EXISTS cache(
     zip TEXT PRIMARY KEY,
     income TEXT,
