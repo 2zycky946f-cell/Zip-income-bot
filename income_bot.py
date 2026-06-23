@@ -13,6 +13,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 TOKEN = os.getenv("BOT_TOKEN")
 CENSUS_KEY = os.getenv("CENSUS_API_KEY")
 
+if not TOKEN:
+    raise Exception("BOT_TOKEN missing")
+
+if not CENSUS_KEY:
+    raise Exception("CENSUS_API_KEY missing")
+    
 ADMIN_ID = 8834288282
 BTC_ADDRESS = "bc1qeyfhgadc52lzecacafgh9n7hy84y2gfhd76evc"
 
@@ -360,7 +366,7 @@ async def buttons(update: Update, context):
             )
             user = cur.fetchone()
 
-                await q.edit_message_text(
+        await q.edit_message_text(
             "👤 ACCOUNT\n\n"
             f"⭐ Plan: {user[1]}\n"
             f"🔎 Searches: {user[3]}\n"
@@ -386,9 +392,6 @@ async def buttons(update: Update, context):
             "Choose an option below:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
-
-async def set_commands(app):
     
 async def set_commands(app):
     await app.bot.set_my_commands([
