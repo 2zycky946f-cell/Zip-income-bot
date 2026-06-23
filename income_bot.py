@@ -139,25 +139,17 @@ async def lookup_zip(zip_code):
 async def text_zip(update: Update, context):
 
     zips = list(set(
-
         re.findall(r"\b\d{5}\b", update.message.text)
-
     ))
 
     if not zips:
-
         await update.message.reply_text(
-
             "❌ Send a valid ZIP code."
-
         )
-
         return
 
     await update.message.reply_text(
-
         "🔍 Searching..."
-
     )
 
     results = []
@@ -166,12 +158,20 @@ async def text_zip(update: Update, context):
 
         result = await lookup_zip(zip_code)
 
-        results.append(result)
+        # pull income number from result
+        match = re.search(r"Income: \$(\d+)", result)
+
+        income = int(match.group(1)) if match else 0
+
+        results.append((income, result))
+
+
+    # HIGH → LOW income sort
+    results.sort(reverse=True, key=lambda x: x[0])
+
 
     await update.message.reply_text(
-
-        "\n\n".join(results)
-
+        "\n\n".join(x[1] for x in results)
     )
 async def image(update: Update, context):
 
@@ -241,22 +241,29 @@ async def image(update: Update, context):
 
         output = []
 
-        for zip_code in zips:
+for zip_code in zips:
 
-            result = await lookup_zip(
-                zip_code
-            )
+    result = await lookup_zip(zip_code)
 
-            print(
-                "INCOME RESULT:",
-                result
-            )
+    print(
+        "INCOME RESULT:",
+        result
+    )
 
-            output.append(result)
+    match = re.search(r"Income: \$(\d+)", result)
 
-        await update.message.reply_text(
-            "\n\n".join(output)
-        )
+    income = int(match.group(1)) if match else 0
+
+    output.append((income, result))
+
+
+# HIGH → LOW income
+output.sort(reverse=True, key=lambda x: x[0])
+
+
+await update.message.reply_text(
+    "\n\n".join(x[1] for x in output)
+)
 
     except Exception as e:
 
