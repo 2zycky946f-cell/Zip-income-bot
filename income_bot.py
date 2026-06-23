@@ -229,47 +229,43 @@ async def image(update: Update, context):
             if match not in zips:
                 zips.append(match)
 
-        print("ZIPS FOUND:", zips)
+                print("ZIPS FOUND:", zips)
 
-            if not zips:
-
-                await update.message.reply_text(
-                    "❌ No ZIP codes found."
-                )
-
-                return
-
-            
-            
-            output = []
-
-            for zip_code in zips:
-
-                print("LOOKING UP:", zip_code)
-
-                result = await lookup_zip(zip_code)
-
-                print(
-                    "INCOME RESULT:",
-                    result
-                )
-
-                match = re.search(r"Income: \$(\d+)", result)
-
-                income = int(match.group(1)) if match else 0
-
-                output.append((income, result))
-
-
-            output.sort(
-                reverse=True,
-                key=lambda x: x[0]
-            )
-
+        if not zips:
 
             await update.message.reply_text(
-                "\n\n".join(x[1] for x in output)
+                "❌ No ZIP codes found."
             )
+
+            return
+
+        output = []
+
+        for zip_code in zips:
+
+            print("LOOKING UP:", zip_code)
+
+            result = await lookup_zip(zip_code)
+
+            print(
+                "INCOME RESULT:",
+                result
+            )
+
+            match = re.search(r"Income: \$(\d+)", result)
+
+            income = int(match.group(1)) if match else 0
+
+            output.append((income, result))
+
+        output.sort(
+            reverse=True,
+            key=lambda x: x[0]
+        )
+
+        await update.message.reply_text(
+            "\n\n".join(x[1] for x in output)
+        )
         
 
     except Exception as e:
