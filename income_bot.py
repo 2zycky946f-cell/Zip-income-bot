@@ -245,6 +245,8 @@ async def image(update: Update, context):
 
             for zip_code in zips:
 
+                print("LOOKING UP:", zip_code)
+
                 result = await lookup_zip(zip_code)
 
                 print(
