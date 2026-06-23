@@ -136,7 +136,43 @@ async def lookup_zip(zip_code):
             f"❌ {zip_code}\n"
             "Income lookup failed"
         )
+async def text_zip(update: Update, context):
 
+    zips = list(set(
+
+        re.findall(r"\b\d{5}\b", update.message.text)
+
+    ))
+
+    if not zips:
+
+        await update.message.reply_text(
+
+            "❌ Send a valid ZIP code."
+
+        )
+
+        return
+
+    await update.message.reply_text(
+
+        "🔍 Searching..."
+
+    )
+
+    results = []
+
+    for zip_code in zips:
+
+        result = await lookup_zip(zip_code)
+
+        results.append(result)
+
+    await update.message.reply_text(
+
+        "\n\n".join(results)
+
+    )
 async def image(update: Update, context):
 
     await update.message.reply_text(
@@ -162,8 +198,7 @@ async def image(update: Update, context):
             ocr.readtext,
             filename,
             detail=0,
-            paragraph=False,
-            batch_size=1
+            paragraph=True
         )
 
         print("OCR Finished")
