@@ -271,13 +271,20 @@ async def image(update: Update, context):
         output.sort(
             reverse=True,
             key=lambda x: x[0]
-        )
+        )highest = output[0][0]
+lowest = output[-1][0]
+average = sum(x[0] for x in output) // len(output)
         await status.edit_text(
             "✅ Report Ready"
         )
         await update.message.reply_text(
-            "\n\n".join(x[1] for x in output)
-        )
+            f"📈 ZIP Report Summary\n\n"
+            f"📍 ZIPs Found: {len(output)}\n"
+            f"💰 Highest Income: ${highest:,}\n"
+            f"📉 Lowest Income: ${lowest:,}\n"
+            f"📊 Average Income: ${average:,}\n\n"
+            + "\n\n".join(x[1] for x in output)
+        )      
         
 
     except Exception as e:
@@ -311,6 +318,9 @@ async def buttons(update: Update, context):
             "93646\n"
             "93722\n\n"
             "You can send multiple ZIP codes at once."
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Back", callback_data="home")]
+            ])
         )
 
     elif q.data == "premium":
@@ -323,6 +333,9 @@ async def buttons(update: Update, context):
             "₿ Bitcoin Payment Address:\n"
             f"{BTC_ADDRESS}\n\n"
             "📩 After payment, send proof of payment to receive your activation code."
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Back", callback_data="home")]
+            ]) 
         )
 
     elif q.data == "account":
@@ -339,8 +352,11 @@ async def buttons(update: Update, context):
             f"⭐ Plan: {user[1]}\n"
             f"🔎 Searches: {user[3]}\n"
             f"📅 Expires: {user[2] or 'Never'}"
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Back", callback_data="home")]
+            ]) 
         )
-
+    
 async def set_commands(app):
     await app.bot.set_my_commands([
         BotCommand("start", "Start")
