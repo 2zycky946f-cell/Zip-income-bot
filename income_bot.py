@@ -241,32 +241,32 @@ async def image(update: Update, context):
 
         output = []
 
-                for zip_code in zips:
+                        output = []
 
-            result = await lookup_zip(zip_code)
+                        for zip_code in zips:
 
-            print(
-                "INCOME RESULT:",
-                result
-            )
+                            result = await lookup_zip(zip_code)
 
-            match = re.search(r"Income: \$(\d+)", result)
+                            print(
+                                "INCOME RESULT:",
+                                result
+                            )
 
-            income = int(match.group(1)) if match else 0
+                            match = re.search(r"Income: \$(\d+)", result)
 
-            output.append((income, result))
+                            income = int(match.group(1)) if match else 0
 
+                            output.append((income, result))
 
-        # HIGH → LOW income (after ALL ZIPs are collected)
-        output.sort(
-            reverse=True,
-            key=lambda x: x[0]
-        )
-
-
-        await update.message.reply_text(
-            "\n\n".join(x[1] for x in output)
-        )
+                        output.sort(
+                            reverse=True,
+                            key=lambda x: x[0]
+                        )
+ 
+                        await update.message.reply_text(
+                            "\n\n".join(x[1] for x in output)
+                        )
+        
 
     except Exception as e:
 
