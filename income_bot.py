@@ -1,6 +1,7 @@
 import os
 import re
 import asyncio
+import sqlite3
 import aiohttp
 import easyocr 
 
