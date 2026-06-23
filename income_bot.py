@@ -271,9 +271,12 @@ async def image(update: Update, context):
         output.sort(
             reverse=True,
             key=lambda x: x[0]
-        )highest = output[0][0]
-lowest = output[-1][0]
-average = sum(x[0] for x in output) // len(output)
+        )
+        
+        highest = output[0][0]
+        lowest = output[-1][0]
+        average = sum(x[0] for x in output) // len(output)
+        
         await status.edit_text(
             "✅ Report Ready"
         )
@@ -317,7 +320,7 @@ async def buttons(update: Update, context):
             "93618\n"
             "93646\n"
             "93722\n\n"
-            "You can send multiple ZIP codes at once."
+            "You can send multiple ZIP codes at once.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back", callback_data="home")]
             ])
@@ -332,7 +335,7 @@ async def buttons(update: Update, context):
             "💎 Lifetime — $30\n\n"
             "₿ Bitcoin Payment Address:\n"
             f"{BTC_ADDRESS}\n\n"
-            "📩 After payment, send proof of payment to receive your activation code."
+            "📩 After payment, send proof of payment to receive your activation code.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Back", callback_data="home")]
             ]) 
@@ -346,6 +349,14 @@ async def buttons(update: Update, context):
         )
 
         user = cur.fetchone()
+
+        if not user:
+            add_user(q.from_user.id)
+            cur.execute(
+                "SELECT * FROM users WHERE id=?",
+                (q.from_user.id,)
+            )
+            user = cur.fetchone()
 
         await q.edit_message_text(
             "👤 ACCOUNT\n\n"
