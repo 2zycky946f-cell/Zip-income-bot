@@ -55,59 +55,7 @@ def add_user(uid):
     cur.execute("INSERT OR IGNORE INTO users(id) VALUES(?)", (uid,))
     db.commit()
 
-async def lookup_zip(zip_code):
 
-    cur.execute(
-        "SELECT income,population FROM cache WHERE zip=?",
-        (zip_code,)
-    )
-    row = cur.fetchone()
-
-    if row:
-        return f"ð {zip_code}\nIncome: ${row[0]}\nPopulation: {row[1]}"
-
-    try:
-
-        url = (
-            f"https://api.census.gov/data/2023/acs/acs5/profile"
-            f"?get=NAME,DP03_0062E,DP05_0001E"
-            f"&for=zip%20code%20tabulation%20area:{zip_code}"
-            f"&key={CENSUS_KEY}"
-        )
-
-        timeout = aiohttp.ClientTimeout(total=60)
-
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-
-                if resp.status != 200:
-                    return f"â {zip_code} lookup failed"
-
-                data = await resp.json()
-
-        print(f"ZIP {zip_code} RESPONSE:", data)
-
-        if len(data) < 2:
-            return f"â {zip_code} not found"
-
-        income = data[1][1]
-        population = data[1][2]
-
-        cur.execute(
-            "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
-            (zip_code, income, population)
-        )
-        db.commit()
-
-        return (
-            f"ð {zip_code}\n"
-            f"Income: ${income}\n"
-            f"Population: {population}"
-        )
-
-    except Exception as e:
-        print("INCOME ERROR:", e)
-        return f"â {zip_code} failed"
 
 async def start(update: Update, context):
     add_user(update.effective_user.id)
@@ -123,19 +71,71 @@ async def start(update: Update, context):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def text_zip(update: Update, context):
+async def lookup_zip(zip_code):
 
-    zips = list(set(re.findall(r"\b\d{5}\b", update.message.text)))
+    cur.execute(
+        "SELECT income,population FROM cache WHERE zip=?",
+        (zip_code,)
+    )
 
-    if not zips:
-        await update.message.reply_text("Send a valid ZIP code.")
-        return
+    row = cur.fetchone()
 
-    await update.message.reply_text("ð Searching...")
+    if row:
+        return (
+            f"📊 ZIP: {zip_code}\n"
+            f"💰 Income: ${row[0]}\n"
+            f"👥 Population: {row[1]}"
+        )
 
-    results = [await lookup_zip(z) for z in zips]
+    try:
 
-    await update.message.reply_text("\n\n".join(results))
+        url = (
+            "https://api.census.gov/data/2023/acs/acs5/profile"
+            "?get=NAME,DP03_0062E,DP05_0001E"
+            f"&for=zip%20code%20tabulation%20area:{zip_code}"
+            f"&key={CENSUS_KEY}"
+        )
+
+        timeout = aiohttp.ClientTimeout(total=15)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+
+            async with session.get(url) as r:
+
+                data = await r.json()
+
+
+        if len(data) < 2:
+            return f"❌ {zip_code} not found"
+
+
+        income = data[1][1]
+        population = data[1][2]
+
+
+        cur.execute(
+            "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
+            (zip_code,income,population)
+        )
+
+        db.commit()
+
+
+        return (
+            f"📊 ZIP: {zip_code}\n"
+            f"💰 Income: ${income}\n"
+            f"👥 Population: {population}"
+        )
+
+
+    except Exception as e:
+
+        print("LOOKUP ERROR:",e)
+
+        return (
+            f"❌ {zip_code}\n"
+            "Income lookup failed"
+        )
 
 async def image(update: Update, context):
 
@@ -275,5 +275,5 @@ app.add_handler(CallbackQueryHandler(buttons))
 
 app.post_init = set_commands
 
-print("ð¥ Bot running")
+print("🔥 Bot running")
 app.run_polling()
