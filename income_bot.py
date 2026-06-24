@@ -128,10 +128,10 @@ async def lookup_zip(zip_code):
             return f"❌ {zip_code} not found"
 
 
-         try:
-             income = int(data[1][1])
-         except:
-             income = -1
+                 try:
+            income = int(data[1][1])
+        except:
+            income = -1
 
         try:
             population = int(data[1][2])
@@ -143,7 +143,6 @@ async def lookup_zip(zip_code):
                 f"❌ {zip_code}\n"
                 "Income unavailable"
             )
-
 
         cur.execute(
             "INSERT OR REPLACE INTO cache VALUES(?,?,?)",
