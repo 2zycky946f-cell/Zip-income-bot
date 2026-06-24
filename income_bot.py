@@ -128,7 +128,7 @@ async def lookup_zip(zip_code):
             return f"❌ {zip_code} not found"
 
 
-                 try:
+        try:
             income = int(data[1][1])
         except:
             income = -1
