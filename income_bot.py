@@ -129,9 +129,9 @@ async def lookup_zip(zip_code):
 
 
          try:
-            income = int(data[1][1])
-        except:
-            income = -1
+             income = int(data[1][1])
+         except:
+             income = -1
 
         try:
             population = int(data[1][2])
