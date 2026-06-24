@@ -254,7 +254,7 @@ async def image(update: Update, context):
         print("OCR TEXT:")
         print(text)
 
-                zips = []
+        zips = []
 
         # First try to find ZIPs after date patterns
         matches = re.findall(
