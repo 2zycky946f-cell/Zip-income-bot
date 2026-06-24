@@ -128,8 +128,21 @@ async def lookup_zip(zip_code):
             return f"❌ {zip_code} not found"
 
 
-        income = data[1][1]
-        population = data[1][2]
+        try:
+    income = int(data[1][1])
+except:
+    income = -1
+
+try:
+    population = int(data[1][2])
+except:
+    population = 0
+
+if income <= 0:
+    return (
+        f"❌ {zip_code}\n"
+        "Income unavailable"
+    )
 
 
         cur.execute(
@@ -244,12 +257,22 @@ async def image(update: Update, context):
 
         zips = []
 
-        for match in re.findall(
-            r"\d{5}",
-            text
-        ):
-            if match not in zips:
-                zips.append(match)
+# First try to find ZIPs after the date separator
+matches = re.findall(
+    r"\d{2}/\d{2}\s*\|\s*(\d{5})",
+    text
+)
+
+# Fallback if OCR misses the "|" character
+if not matches:
+    matches = re.findall(
+        r"\b\d{5}\b",
+        text
+    )
+
+for match in matches:
+    if match not in zips:
+        zips.append(match)
 
         print("ZIPS FOUND:", zips)
 
@@ -278,11 +301,16 @@ async def image(update: Update, context):
                 result
             )
 
-            match = re.search(r"Income: \$(\d+)", result)
+            match = re.search(
+                r"Income: \$([0-9,]+)",
+                result
+            )
 
-            income = int(match.group(1)) if match else 0
-
-            output.append((income, result))
+            if match:
+                income = int(
+                    match.group(1).replace(",", "")
+                )
+                output.append((income, result))
 
         output.sort(
             reverse=True,
