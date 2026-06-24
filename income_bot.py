@@ -255,24 +255,24 @@ async def image(update: Update, context):
         print("OCR TEXT:")
         print(text)
 
-        zips = []
+                zips = []
 
-# First try to find ZIPs after the date separator
-matches = re.findall(
-    r"\d{2}/\d{2}\s*\|\s*(\d{5})",
-    text
-)
+        # First try to find ZIPs after date patterns
+        matches = re.findall(
+            r"\d{2}/\d{2}\s*\|\s*(\d{5})",
+            text
+        )
 
-# Fallback if OCR misses the "|" character
-if not matches:
-    matches = re.findall(
-        r"\b\d{5}\b",
-        text
-    )
+        # Fallback to any 5-digit ZIP
+        if not matches:
+            matches = re.findall(
+                r"\b\d{5}\b",
+                text
+            )
 
-for match in matches:
-    if match not in zips:
-        zips.append(match)
+        for match in matches:
+            if match not in zips:
+                zips.append(match)
 
         print("ZIPS FOUND:", zips)
 
@@ -281,13 +281,10 @@ for match in matches:
         )
 
         if not zips:
-
             await update.message.reply_text(
                 "❌ No ZIP codes found."
             )
-
             return
-
         output = []
 
         for zip_code in zips:
@@ -312,16 +309,20 @@ for match in matches:
                 )
                 output.append((income, result))
 
-        output.sort(
+                output.sort(
             reverse=True,
             key=lambda x: x[0]
         )
+
         if not output:
             await status.edit_text("❌ No income results found")
             return
-        highest = output[0][0]
-        lowest = output[-1][0]
-        average = sum(x[0] for x in output) // len(output)
+
+        valid_incomes = [x[0] for x in output]
+
+        highest = max(valid_incomes)
+        lowest = min(valid_incomes)
+        average = sum(valid_incomes) // len(valid_incomes)
         
         await status.edit_text(
             "✅ Report Ready"
